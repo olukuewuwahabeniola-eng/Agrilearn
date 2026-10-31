@@ -1,0 +1,15 @@
+# Optional local MongoDB — avoids Atlas IP whitelist issues during development.
+# Start: docker compose up -d
+# Then in backend/.env set:
+#   MONGODB_URI=mongodb://127.0.0.1:27017/agrilearn
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - agrilearn_mongo_data:/data/db
+
+volumes:
+  agrilearn_mongo_data:

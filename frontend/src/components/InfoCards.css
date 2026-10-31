@@ -1,0 +1,146 @@
+.info-cards {
+  padding-top: 1rem;
+  padding-bottom: 4rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f5fbf7 100%);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.info-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 1.6rem 1.5rem;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(209, 231, 215, 0.7);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.info-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-hover);
+}
+
+.info-card-about {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+.info-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--green-pale);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+  color: var(--green-primary);
+}
+
+.info-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.info-card h3 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  margin-bottom: 0.55rem;
+}
+
+.info-card p {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  margin-bottom: 0.85rem;
+}
+
+.info-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--green-mid);
+  transition: gap 0.2s ease;
+}
+
+.info-link:hover {
+  gap: 0.55rem;
+}
+
+.about-image {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 4px solid var(--green-mint);
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+
+.about-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.objectives-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.objectives-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-body);
+}
+
+.objectives-list .check {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--green-mint);
+  color: var(--green-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+
+.objectives-list .check svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (max-width: 960px) {
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-card-about {
+    grid-template-columns: 1fr auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .info-card-about {
+    grid-template-columns: 1fr;
+  }
+
+  .about-image {
+    width: 90px;
+    height: 90px;
+    margin-inline: auto;
+  }
+}
