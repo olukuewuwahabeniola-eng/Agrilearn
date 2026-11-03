@@ -10,8 +10,8 @@ const {
   MAX_PDF_BYTES,
   hashBuffer,
   savePdfBuffer,
-  createReadStream,
-  resolveStoredPath,
+  openStoredReadStream,
+  deleteStoredNoteFile,
 } = require("../utils/noteStorage");
 const { pdfTooLargeMessage } = require("../utils/uploadLimits");
 const {
@@ -212,6 +212,8 @@ async function uploadNote(req, res) {
       level: student.level,
       courseCode: course.code,
       originalName: req.file.originalname,
+      folderKind: "notes/personal",
+      ownerSegment: student._id.toString(),
     });
 
     const title =
@@ -222,22 +224,28 @@ async function uploadNote(req, res) {
         .slice(0, 160) ||
       `${course.code} lecture notes`;
 
-    const note = await NoteResource.create({
-      title,
-      description: description.slice(0, 500) || "Personal upload",
-      originalName: req.file.originalname || saved.storedName,
-      storedName: saved.storedName,
-      storagePath: saved.storagePath,
-      mimeType: req.file.mimetype || "application/pdf",
-      size: saved.size,
-      contentHash: saved.contentHash,
-      level: student.level,
-      courseCode: course.code,
-      courseTitle: course.title,
-      source: "personal",
-      studentOwner: student._id,
-      uploadedBy: student._id,
-    });
+    let note;
+    try {
+      note = await NoteResource.create({
+        title,
+        description: description.slice(0, 500) || "Personal upload",
+        originalName: req.file.originalname || saved.storedName,
+        storedName: saved.storedName,
+        storagePath: saved.storagePath,
+        mimeType: req.file.mimetype || "application/pdf",
+        size: saved.size,
+        contentHash: saved.contentHash,
+        level: student.level,
+        courseCode: course.code,
+        courseTitle: course.title,
+        source: "personal",
+        studentOwner: student._id,
+        uploadedBy: student._id,
+      });
+    } catch (createError) {
+      await deleteStoredNoteFile(saved.storagePath);
+      throw createError;
+    }
 
     await recordPersonalUpload(student, note, { via: "notes" });
 
@@ -248,6 +256,12 @@ async function uploadNote(req, res) {
       note: note.toPublicObject(),
     });
   } catch (error) {
+    if (error?.code === "CLOUDINARY_NOT_CONFIGURED" || error?.code === "CLOUDINARY_UPLOAD_FAILED") {
+      return res.status(503).json({
+        success: false,
+        message: "File storage is temporarily unavailable. Please try again later.",
+      });
+    }
     if (error?.code === 11000) {
       try {
         const courseCode = String(req.body?.courseCode || "").trim();
@@ -326,7 +340,6 @@ async function downloadNoteFile(req, res) {
 
     await logMaterialDownloadIfNeeded(req.student, note);
 
-    resolveStoredPath(note.storagePath);
     res.setHeader("Content-Type", note.mimeType || "application/pdf");
     res.setHeader(
       "Content-Disposition",
@@ -336,7 +349,7 @@ async function downloadNoteFile(req, res) {
       res.setHeader("Content-Length", String(note.size));
     }
 
-    const stream = createReadStream(note.storagePath);
+    const stream = await openStoredReadStream(note.storagePath);
     stream.on("error", (err) => {
       console.error("PDF stream error:", err.message);
       if (!res.headersSent) {
@@ -377,8 +390,9 @@ async function deleteNote(req, res) {
       });
     }
 
+    const storagePath = note.storagePath;
     await note.deleteOne();
-    // File remains on disk for now (same as prior behavior); metadata removed.
+    await deleteStoredNoteFile(storagePath);
 
     return res.status(200).json({
       success: true,

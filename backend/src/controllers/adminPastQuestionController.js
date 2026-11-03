@@ -10,7 +10,7 @@ const {
   validateImagesTotalSize,
   savePastQuestionFile,
   deletePastQuestionFiles,
-  createReadStream,
+  openStoredReadStream,
 } = require("../utils/pastQuestionStorage");
 const { pastQuestionMulterSizeMessage } = require("../utils/uploadLimits");
 const {
@@ -104,35 +104,41 @@ async function buildFilesFromRequest(req, { level, courseCode }) {
     throw error;
   }
 
-  if (pdfFile) {
-    const saved = await savePastQuestionFile({
-      buffer: pdfFile.buffer,
-      level,
-      courseCode,
-      originalName: pdfFile.originalname,
-      mimeType: pdfFile.mimetype,
-    });
-    return {
-      format: "pdf",
-      files: [{ ...saved, pageOrder: 0 }],
-    };
-  }
-
-  if (imageFiles.length) {
-    validateImagesTotalSize(imageFiles.map((img) => img.buffer));
-    const files = [];
-    for (let i = 0; i < imageFiles.length; i += 1) {
-      const img = imageFiles[i];
+  const savedFiles = [];
+  try {
+    if (pdfFile) {
       const saved = await savePastQuestionFile({
-        buffer: img.buffer,
+        buffer: pdfFile.buffer,
         level,
         courseCode,
-        originalName: img.originalname,
-        mimeType: img.mimetype,
+        originalName: pdfFile.originalname,
+        mimeType: pdfFile.mimetype,
       });
-      files.push({ ...saved, pageOrder: i });
+      savedFiles.push({ ...saved, pageOrder: 0 });
+      return {
+        format: "pdf",
+        files: savedFiles,
+      };
     }
-    return { format: "images", files };
+
+    if (imageFiles.length) {
+      validateImagesTotalSize(imageFiles.map((img) => img.buffer));
+      for (let i = 0; i < imageFiles.length; i += 1) {
+        const img = imageFiles[i];
+        const saved = await savePastQuestionFile({
+          buffer: img.buffer,
+          level,
+          courseCode,
+          originalName: img.originalname,
+          mimeType: img.mimetype,
+        });
+        savedFiles.push({ ...saved, pageOrder: i });
+      }
+      return { format: "images", files: savedFiles };
+    }
+  } catch (error) {
+    await deletePastQuestionFiles(savedFiles);
+    throw error;
   }
 
   const error = new Error("Please upload a PDF or one or more images.");
@@ -166,6 +172,17 @@ function handleUploadError(error, res) {
 
   if (error?.code === "INVALID_MIME" || error?.code === "LIMIT_FILE_SIZE") {
     return res.status(400).json({ success: false, message: error.message });
+  }
+
+  if (
+    error?.code === "CLOUDINARY_NOT_CONFIGURED" ||
+    error?.code === "CLOUDINARY_UPLOAD_FAILED"
+  ) {
+    return res.status(503).json({
+      success: false,
+      message:
+        "File storage is temporarily unavailable. Please try again later.",
+    });
   }
 
   if (error?.message?.includes("Only PDF")) {
@@ -256,17 +273,23 @@ async function createPastQuestion(req, res) {
       courseCode: course.code,
     });
 
-    const doc = await PastQuestion.create({
-      courseCode: course.code,
-      courseTitle: course.title,
-      level,
-      examYear,
-      description: description.slice(0, 500),
-      format,
-      files,
-      published: publishedRaw === true,
-      uploadedBy: req.admin._id,
-    });
+    let doc;
+    try {
+      doc = await PastQuestion.create({
+        courseCode: course.code,
+        courseTitle: course.title,
+        level,
+        examYear,
+        description: description.slice(0, 500),
+        format,
+        files,
+        published: publishedRaw === true,
+        uploadedBy: req.admin._id,
+      });
+    } catch (createError) {
+      await deletePastQuestionFiles(files);
+      throw createError;
+    }
 
     return res.status(201).json({
       success: true,
@@ -396,10 +419,16 @@ async function replacePastQuestionFiles(req, res) {
       courseCode: doc.courseCode,
     });
 
-    await deletePastQuestionFiles(doc.files);
+    const previousFiles = doc.files;
     doc.format = format;
     doc.files = files;
-    await doc.save();
+    try {
+      await doc.save();
+    } catch (saveError) {
+      await deletePastQuestionFiles(files);
+      throw saveError;
+    }
+    await deletePastQuestionFiles(previousFiles);
 
     return res.status(200).json({
       success: true,
@@ -502,7 +531,7 @@ async function streamPastQuestionFile(req, res) {
     );
     if (file.size) res.setHeader("Content-Length", String(file.size));
 
-    const stream = createReadStream(file.storagePath);
+    const stream = await openStoredReadStream(file.storagePath);
     stream.on("error", (err) => {
       console.error("Past question stream error:", err.message);
       if (!res.headersSent) {

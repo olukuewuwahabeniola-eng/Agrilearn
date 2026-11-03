@@ -1,9 +1,11 @@
-const crypto = require("crypto");
 const fs = require("fs");
-const fsp = require("fs/promises");
 const path = require("path");
-const { getUploadsRoot, hashBuffer, resolveStoredPath, createReadStream } =
-  require("./noteStorage");
+const {
+  hashBuffer,
+  resolveStoredPath,
+  openStoredReadStream,
+  isCloudinaryStoragePath,
+} = require("./noteStorage");
 const {
   MAX_PDF_BYTES,
   MAX_IMAGE_BYTES,
@@ -13,6 +15,11 @@ const {
   imageTooLargeMessage,
   imagesTotalTooLargeMessage,
 } = require("./uploadLimits");
+const {
+  isCloudinaryConfigured,
+  uploadBuffer,
+  destroyCloudinaryAsset,
+} = require("./cloudinary");
 
 const ALLOWED_MIMES = new Set([
   "application/pdf",
@@ -21,16 +28,14 @@ const ALLOWED_MIMES = new Set([
   "image/png",
 ]);
 
-function getPastQuestionsRoot() {
-  return path.join(getUploadsRoot(), "past-questions");
-}
-
 function sanitizeSegment(value) {
-  return String(value || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 80) || "file";
+  return (
+    String(value || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "file"
+  );
 }
 
 function extensionForMime(mimeType) {
@@ -39,16 +44,6 @@ function extensionForMime(mimeType) {
   if (mime === "image/png") return ".png";
   if (mime === "image/jpeg" || mime === "image/jpg") return ".jpg";
   return ".bin";
-}
-
-async function ensurePastQuestionDir(level, courseCode) {
-  const dir = path.join(
-    getPastQuestionsRoot(),
-    sanitizeSegment(level),
-    sanitizeSegment(courseCode).toUpperCase()
-  );
-  await fsp.mkdir(dir, { recursive: true });
-  return dir;
 }
 
 function validateFileSize(buffer, mimeType) {
@@ -81,7 +76,9 @@ function validateImagesTotalSize(buffers) {
 }
 
 /**
- * Persist one past-question file under uploads/past-questions/{level}/{courseCode}/.
+ * Persist one past-question file to Cloudinary (new uploads only).
+ * Legacy local disk paths remain readable via openStoredReadStream.
+ * storagePath is opaque (cloudinary:…) — never a public URL.
  */
 async function savePastQuestionFile({
   buffer,
@@ -99,33 +96,47 @@ async function savePastQuestionFile({
 
   validateFileSize(buffer, normalizedMime);
 
+  if (!isCloudinaryConfigured()) {
+    const error = new Error(
+      "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET."
+    );
+    error.code = "CLOUDINARY_NOT_CONFIGURED";
+    throw error;
+  }
+
   const contentHash = hashBuffer(buffer);
-  const dir = await ensurePastQuestionDir(level, courseCode);
   const base = sanitizeSegment(path.parse(originalName || "past-paper").name);
   const ext = extensionForMime(normalizedMime);
   const storedName = `${Date.now()}-${contentHash.slice(0, 12)}-${base}${ext}`;
-  const absolutePath = path.join(dir, storedName);
+  const levelSeg = sanitizeSegment(level);
+  const courseSeg = sanitizeSegment(courseCode).toUpperCase();
 
-  await fsp.writeFile(absolutePath, buffer);
-
-  const relativePath = path
-    .relative(getUploadsRoot(), absolutePath)
-    .split(path.sep)
-    .join("/");
+  const uploaded = await uploadBuffer({
+    buffer,
+    mimeType: normalizedMime,
+    folderParts: ["past-questions", levelSeg, courseSeg],
+    storedName,
+    originalName,
+  });
 
   return {
     contentHash,
     storedName,
-    storagePath: relativePath,
-    size: buffer.length,
+    storagePath: uploaded.storagePath,
+    size: uploaded.bytes || buffer.length,
     mimeType: normalizedMime,
     originalName: originalName || storedName,
+    storageProvider: "cloudinary",
   };
 }
 
 async function deleteStoredFile(storagePath) {
   if (!storagePath) return;
   try {
+    if (isCloudinaryStoragePath(storagePath)) {
+      await destroyCloudinaryAsset(storagePath);
+      return;
+    }
     const absolute = resolveStoredPath(storagePath);
     await fsp.unlink(absolute);
   } catch (error) {
@@ -140,6 +151,19 @@ async function deletePastQuestionFiles(files) {
   await Promise.all(files.map((f) => deleteStoredFile(f.storagePath)));
 }
 
+/** Sync local-only; prefer openStoredReadStream for dual storage. */
+function createReadStream(storagePath) {
+  if (isCloudinaryStoragePath(storagePath)) {
+    const error = new Error(
+      "Use openStoredReadStream for Cloudinary-backed files."
+    );
+    error.code = "ASYNC_STREAM_REQUIRED";
+    throw error;
+  }
+  const absolute = resolveStoredPath(storagePath);
+  return fs.createReadStream(absolute);
+}
+
 module.exports = {
   MAX_PDF_BYTES,
   MAX_IMAGE_BYTES,
@@ -151,5 +175,7 @@ module.exports = {
   deletePastQuestionFiles,
   deleteStoredFile,
   createReadStream,
+  openStoredReadStream,
   resolveStoredPath,
+  isCloudinaryStoragePath,
 };

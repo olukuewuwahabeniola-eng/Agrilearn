@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const PastQuestion = require("../models/PastQuestion");
 const { findCourseForStudent } = require("../data/coursesByLevel");
-const { createReadStream } = require("../utils/pastQuestionStorage");
+const { openStoredReadStream } = require("../utils/pastQuestionStorage");
 const { logPastQuestionAccessIfNeeded } = require("../utils/activityTracker");
 
 function buildStudentFilter(req, student) {
@@ -162,7 +162,7 @@ async function streamPastQuestionFile(req, res) {
     );
     if (file.size) res.setHeader("Content-Length", String(file.size));
 
-    const stream = createReadStream(file.storagePath);
+    const stream = await openStoredReadStream(file.storagePath);
     stream.on("error", (err) => {
       console.error("Past question stream error:", err.message);
       if (!res.headersSent) {

@@ -6,6 +6,14 @@ const {
   MAX_PDF_BYTES,
   pdfTooLargeMessage,
 } = require("./uploadLimits");
+const {
+  isCloudinaryConfigured,
+  isCloudinaryStoragePath,
+  uploadBuffer,
+  downloadCloudinaryBuffer,
+  openCloudinaryReadStream,
+  destroyCloudinaryAsset,
+} = require("./cloudinary");
 
 function getUploadsRoot() {
   const configured = process.env.UPLOADS_DIR;
@@ -20,32 +28,37 @@ function getNotesRoot() {
 }
 
 function sanitizeSegment(value) {
-  return String(value || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 80) || "file";
+  return (
+    String(value || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "file"
+  );
 }
 
 function hashBuffer(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-async function ensureNotesDir(level, courseCode) {
-  const dir = path.join(
-    getNotesRoot(),
-    sanitizeSegment(level),
-    sanitizeSegment(courseCode).toUpperCase()
-  );
-  await fsp.mkdir(dir, { recursive: true });
-  return dir;
+function buildStoredName(originalName, contentHash) {
+  const base = sanitizeSegment(path.parse(originalName || "lecture").name);
+  return `${Date.now()}-${contentHash.slice(0, 12)}-${base}.pdf`;
 }
 
 /**
- * Persist a PDF under uploads/notes/{level}/{courseCode}/.
- * Returns relative storage path (from uploads root) plus absolute path.
+ * Persist a PDF to Cloudinary (new uploads only).
+ * Legacy local disk paths remain readable via readStoredPdf / openStoredReadStream.
+ * Returns cloudinary: storagePath — never a public URL.
  */
-async function savePdfBuffer({ buffer, level, courseCode, originalName }) {
+async function savePdfBuffer({
+  buffer,
+  level,
+  courseCode,
+  originalName,
+  folderKind = "notes",
+  ownerSegment = null,
+}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) {
     const error = new Error("PDF content is empty.");
     error.code = "EMPTY_PDF";
@@ -57,37 +70,55 @@ async function savePdfBuffer({ buffer, level, courseCode, originalName }) {
     throw error;
   }
 
+  if (!isCloudinaryConfigured()) {
+    const error = new Error(
+      "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET."
+    );
+    error.code = "CLOUDINARY_NOT_CONFIGURED";
+    throw error;
+  }
+
   const contentHash = hashBuffer(buffer);
-  const dir = await ensureNotesDir(level, courseCode);
-  const base = sanitizeSegment(path.parse(originalName || "lecture").name);
-  const storedName = `${Date.now()}-${contentHash.slice(0, 12)}-${base}.pdf`;
-  const absolutePath = path.join(dir, storedName);
+  const storedName = buildStoredName(originalName, contentHash);
+  const levelSeg = sanitizeSegment(level);
+  const courseSeg = sanitizeSegment(courseCode).toUpperCase();
 
-  await fsp.writeFile(absolutePath, buffer);
+  const folderParts = String(folderKind || "notes")
+    .split("/")
+    .map((part) => sanitizeSegment(part))
+    .filter(Boolean);
+  if (ownerSegment) folderParts.push(sanitizeSegment(ownerSegment));
+  folderParts.push(levelSeg, courseSeg);
 
-  const relativePath = path
-    .relative(getUploadsRoot(), absolutePath)
-    .split(path.sep)
-    .join("/");
+  const uploaded = await uploadBuffer({
+    buffer,
+    mimeType: "application/pdf",
+    folderParts,
+    storedName,
+    originalName,
+  });
 
   return {
     contentHash,
     storedName,
-    storagePath: relativePath,
-    absolutePath,
-    size: buffer.length,
+    storagePath: uploaded.storagePath,
+    absolutePath: null,
+    size: uploaded.bytes || buffer.length,
+    storageProvider: "cloudinary",
   };
 }
 
 function resolveStoredPath(storagePath) {
+  if (isCloudinaryStoragePath(storagePath)) {
+    const error = new Error("Cloudinary assets are not local files.");
+    error.code = "NOT_LOCAL_PATH";
+    throw error;
+  }
+
   const root = path.resolve(getUploadsRoot());
   const absolute = path.resolve(root, storagePath);
   const relative = path.relative(root, absolute);
-  if (
-    !relative ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     const error = new Error("Invalid storage path.");
     error.code = "INVALID_PATH";
     throw error;
@@ -96,11 +127,34 @@ function resolveStoredPath(storagePath) {
 }
 
 async function readStoredPdf(storagePath) {
+  if (isCloudinaryStoragePath(storagePath)) {
+    return downloadCloudinaryBuffer(storagePath);
+  }
   const absolute = resolveStoredPath(storagePath);
   return fsp.readFile(absolute);
 }
 
+/**
+ * Open a readable stream for a stored file (local disk or Cloudinary).
+ * Async so Cloudinary signed downloads can be fetched after auth checks.
+ */
+async function openStoredReadStream(storagePath) {
+  if (isCloudinaryStoragePath(storagePath)) {
+    return openCloudinaryReadStream(storagePath);
+  }
+  const absolute = resolveStoredPath(storagePath);
+  return fs.createReadStream(absolute);
+}
+
+/** @deprecated Prefer openStoredReadStream — sync local-only helper kept for callers. */
 function createReadStream(storagePath) {
+  if (isCloudinaryStoragePath(storagePath)) {
+    const error = new Error(
+      "Use openStoredReadStream for Cloudinary-backed files."
+    );
+    error.code = "ASYNC_STREAM_REQUIRED";
+    throw error;
+  }
   const absolute = resolveStoredPath(storagePath);
   return fs.createReadStream(absolute);
 }
@@ -108,6 +162,10 @@ function createReadStream(storagePath) {
 async function deleteStoredNoteFile(storagePath) {
   if (!storagePath) return;
   try {
+    if (isCloudinaryStoragePath(storagePath)) {
+      await destroyCloudinaryAsset(storagePath);
+      return;
+    }
     const absolute = resolveStoredPath(storagePath);
     await fsp.unlink(absolute);
   } catch (error) {
@@ -125,6 +183,8 @@ module.exports = {
   savePdfBuffer,
   readStoredPdf,
   createReadStream,
+  openStoredReadStream,
   resolveStoredPath,
   deleteStoredNoteFile,
+  isCloudinaryStoragePath,
 };

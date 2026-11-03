@@ -14,6 +14,7 @@ const {
   MAX_PDF_BYTES,
   hashBuffer,
   savePdfBuffer,
+  deleteStoredNoteFile,
 } = require("../utils/noteStorage");
 const { pdfTooLargeMessage } = require("../utils/uploadLimits");
 const { startOfTodayUtc } = require("../utils/activityTracker");
@@ -400,6 +401,7 @@ async function uploadNote(req, res) {
       level,
       courseCode: course.code,
       originalName: req.file.originalname,
+      folderKind: "notes/official",
     });
 
     const title =
@@ -412,22 +414,28 @@ async function uploadNote(req, res) {
 
     // NoteResource.uploadedBy refs Student. For admin uploads we still need an ObjectId;
     // store admin id in uploadedBy for audit — schema is ObjectId without strict populate.
-    const note = await NoteResource.create({
-      title,
-      description: description.slice(0, 500) || "Official AgriLearn material",
-      originalName: req.file.originalname || saved.storedName,
-      storedName: saved.storedName,
-      storagePath: saved.storagePath,
-      mimeType: req.file.mimetype || "application/pdf",
-      size: saved.size,
-      contentHash: saved.contentHash,
-      level,
-      courseCode: course.code,
-      courseTitle: course.title,
-      source: "official",
-      studentOwner: null,
-      uploadedBy: req.admin._id,
-    });
+    let note;
+    try {
+      note = await NoteResource.create({
+        title,
+        description: description.slice(0, 500) || "Official AgriLearn material",
+        originalName: req.file.originalname || saved.storedName,
+        storedName: saved.storedName,
+        storagePath: saved.storagePath,
+        mimeType: req.file.mimetype || "application/pdf",
+        size: saved.size,
+        contentHash: saved.contentHash,
+        level,
+        courseCode: course.code,
+        courseTitle: course.title,
+        source: "official",
+        studentOwner: null,
+        uploadedBy: req.admin._id,
+      });
+    } catch (createError) {
+      await deleteStoredNoteFile(saved.storagePath);
+      throw createError;
+    }
 
     return res.status(201).json({
       success: true,
@@ -450,6 +458,16 @@ async function uploadNote(req, res) {
     }
     if (error?.message === "Only PDF files are allowed.") {
       return res.status(400).json({ success: false, message: error.message });
+    }
+    if (
+      error?.code === "CLOUDINARY_NOT_CONFIGURED" ||
+      error?.code === "CLOUDINARY_UPLOAD_FAILED"
+    ) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "File storage is temporarily unavailable. Please try again later.",
+      });
     }
     if (error?.code === 11000) {
       return res.status(200).json({

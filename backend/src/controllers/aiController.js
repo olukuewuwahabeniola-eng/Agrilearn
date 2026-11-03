@@ -15,6 +15,7 @@ const {
   hashBuffer,
   savePdfBuffer,
   readStoredPdf,
+  deleteStoredNoteFile,
 } = require("../utils/noteStorage");
 const { pdfTooLargeMessage } = require("../utils/uploadLimits");
 const {
@@ -220,6 +221,8 @@ async function persistUploadToLibrary({ file, student, course }) {
     level: student.level,
     courseCode: course.code,
     originalName: file.originalname,
+    folderKind: "notes/personal",
+    ownerSegment: student._id.toString(),
   });
 
   const title =
@@ -247,6 +250,7 @@ async function persistUploadToLibrary({ file, student, course }) {
     });
   } catch (error) {
     if (error?.code === 11000) {
+      await deleteStoredNoteFile(saved.storagePath);
       return NoteResource.findOne({
         level: student.level,
         courseCode: course.code,
@@ -255,6 +259,7 @@ async function persistUploadToLibrary({ file, student, course }) {
         studentOwner: student._id,
       });
     }
+    await deleteStoredNoteFile(saved.storagePath);
     throw error;
   }
 }
@@ -469,6 +474,18 @@ async function assist(req, res) {
       return res.status(400).json({
         success: false,
         message: error.message,
+      });
+    }
+
+    if (
+      error?.code === "CLOUDINARY_NOT_CONFIGURED" ||
+      error?.code === "CLOUDINARY_UPLOAD_FAILED" ||
+      error?.code === "CLOUDINARY_DOWNLOAD_FAILED"
+    ) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "File storage is temporarily unavailable. Please try again later.",
       });
     }
 
