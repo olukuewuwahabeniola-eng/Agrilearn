@@ -243,45 +243,116 @@ function uploadBuffer({
   });
 }
 
-function signedDownloadUrl(storagePath) {
+function extractFormatFromPublicId(publicId) {
+  const match = String(publicId || "").match(/\.([a-z0-9]+)$/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+/**
+ * Build a short-lived Admin API download URL for authenticated/private assets.
+ * Delivery URLs from cloudinary.url(..., { sign_url: true }) return HTTP 401 for
+ * type=authenticated resources — private_download_url is the correct retrieval API.
+ */
+function buildPrivateDownloadUrl({
+  resourceType,
+  publicId,
+  format,
+  deliveryType,
+}) {
   ensureCloudinaryConfigured();
-  const { resourceType, publicId } = parseCloudinaryStoragePath(storagePath);
-  return cloudinary.url(publicId, {
+  return cloudinary.utils.private_download_url(publicId, format || null, {
     resource_type: resourceType,
-    type: "authenticated",
-    sign_url: true,
-    secure: true,
+    type: deliveryType,
+    expires_at: Math.floor(Date.now() / 1000) + 600,
   });
 }
 
-async function downloadCloudinaryBuffer(storagePath) {
-  const url = signedDownloadUrl(storagePath);
-  const response = await fetch(url);
-  if (!response.ok) {
-    const error = new Error(
-      `Cloudinary download failed (${response.status}).`
-    );
-    error.code = "CLOUDINARY_DOWNLOAD_FAILED";
-    error.http_code = response.status;
-    logCloudinaryFailure("download failed", error);
-    throw error;
+function downloadAttemptsFor(storagePath) {
+  const { resourceType, publicId } = parseCloudinaryStoragePath(storagePath);
+  const format = extractFormatFromPublicId(publicId);
+  const withoutExt = format
+    ? publicId.slice(0, -(format.length + 1))
+    : publicId;
+
+  // Uploads use type=authenticated. Keep that first. Extra attempts only cover
+  // public_id/format edge cases — never switches assets to public delivery.
+  const attempts = [
+    {
+      resourceType,
+      publicId,
+      format: format || null,
+      deliveryType: "authenticated",
+      label: "authenticated-full-id",
+    },
+  ];
+
+  if (format && withoutExt && withoutExt !== publicId) {
+    attempts.push({
+      resourceType,
+      publicId: withoutExt,
+      format,
+      deliveryType: "authenticated",
+      label: "authenticated-id-plus-format",
+    });
   }
+
+  return attempts;
+}
+
+async function fetchCloudinaryResponse(storagePath) {
+  ensureCloudinaryConfigured();
+  const attempts = downloadAttemptsFor(storagePath);
+  let lastStatus = 0;
+  let lastLabel = "";
+
+  for (const attempt of attempts) {
+    const url = buildPrivateDownloadUrl(attempt);
+    lastLabel = attempt.label;
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      logCloudinaryFailure(
+        "download network error",
+        error,
+        `resource=${attempt.resourceType} attempt=${attempt.label}`
+      );
+      continue;
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    lastStatus = response.status;
+    logCloudinaryFailure(
+      "download attempt failed",
+      {
+        code: "CLOUDINARY_DOWNLOAD_FAILED",
+        http_code: response.status,
+        message: `Cloudinary download attempt failed (${response.status}).`,
+      },
+      `resource=${attempt.resourceType} attempt=${attempt.label}`
+    );
+  }
+
+  const error = new Error(
+    `Cloudinary download failed (${lastStatus || "unknown"}).`
+  );
+  error.code = "CLOUDINARY_DOWNLOAD_FAILED";
+  error.http_code = lastStatus || 401;
+  logCloudinaryFailure("download failed", error, `lastAttempt=${lastLabel}`);
+  throw error;
+}
+
+async function downloadCloudinaryBuffer(storagePath) {
+  const response = await fetchCloudinaryResponse(storagePath);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
 
 async function openCloudinaryReadStream(storagePath) {
-  const url = signedDownloadUrl(storagePath);
-  const response = await fetch(url);
-  if (!response.ok) {
-    const error = new Error(
-      `Cloudinary stream failed (${response.status}).`
-    );
-    error.code = "CLOUDINARY_DOWNLOAD_FAILED";
-    error.http_code = response.status;
-    logCloudinaryFailure("stream failed", error);
-    throw error;
-  }
+  const response = await fetchCloudinaryResponse(storagePath);
   if (!response.body) {
     const buffer = Buffer.from(await response.arrayBuffer());
     return Readable.from(buffer);
@@ -328,6 +399,8 @@ module.exports = {
   downloadCloudinaryBuffer,
   openCloudinaryReadStream,
   destroyCloudinaryAsset,
+  downloadAttemptsFor,
+  buildPrivateDownloadUrl,
   resourceTypeForMime,
   sanitizeSegment,
 };
