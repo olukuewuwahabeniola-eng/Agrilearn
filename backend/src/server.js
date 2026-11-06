@@ -5,6 +5,10 @@ const cors = require("cors");
 require("dotenv").config();
 
 const { connectDB, getDbStatus } = require("./config/db");
+const {
+  isCloudinaryConfigured,
+  logCloudinaryConfigStatus,
+} = require("./utils/cloudinary");
 const healthRoutes = require("./routes/healthRoutes");
 const authRoutes = require("./routes/authRoutes");
 const supportRoutes = require("./routes/supportRoutes");
@@ -88,6 +92,13 @@ async function startServer() {
   } catch (error) {
     console.error(
       "Server will start without a database connection. Fix MONGODB_URI and restart."
+    );
+  }
+
+  logCloudinaryConfigStatus("startup");
+  if (!isCloudinaryConfigured()) {
+    console.error(
+      "[cloudinary] uploads will fail until CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are set"
     );
   }
 

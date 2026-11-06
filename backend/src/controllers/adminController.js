@@ -463,6 +463,9 @@ async function uploadNote(req, res) {
       error?.code === "CLOUDINARY_NOT_CONFIGURED" ||
       error?.code === "CLOUDINARY_UPLOAD_FAILED"
     ) {
+      console.error(
+        `[admin notes] upload storage error code=${error.code} http=${error.http_code || "n/a"} message=${String(error.message || "").slice(0, 300)}`
+      );
       return res.status(503).json({
         success: false,
         message:

@@ -6,27 +6,44 @@ const DEFAULT_FOLDER = "agrilearn";
 
 let configured = false;
 
+function envValue(name) {
+  const value = process.env[name];
+  if (value == null) return "";
+  return String(value).trim().replace(/^["']|["']$/g, "");
+}
+
 function getCloudinaryFolder() {
-  const configuredFolder = process.env.CLOUDINARY_FOLDER;
-  if (configuredFolder && configuredFolder.trim()) {
-    return configuredFolder
-      .trim()
-      .replace(/^\/+|\/+$/g, "")
-      .replace(/\/+/g, "/");
+  const configuredFolder = envValue("CLOUDINARY_FOLDER");
+  if (configuredFolder) {
+    return configuredFolder.replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
   }
   return DEFAULT_FOLDER;
 }
 
+function cloudinaryCredentialStatus() {
+  return {
+    cloudName: Boolean(envValue("CLOUDINARY_CLOUD_NAME")),
+    apiKey: Boolean(envValue("CLOUDINARY_API_KEY")),
+    apiSecret: Boolean(envValue("CLOUDINARY_API_SECRET")),
+    folder: getCloudinaryFolder(),
+  };
+}
+
 function isCloudinaryConfigured() {
-  return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
+  const status = cloudinaryCredentialStatus();
+  return status.cloudName && status.apiKey && status.apiSecret;
+}
+
+function logCloudinaryConfigStatus(context) {
+  const status = cloudinaryCredentialStatus();
+  console.log(
+    `[cloudinary] ${context} configured=${status.cloudName && status.apiKey && status.apiSecret} cloudName=${status.cloudName} apiKey=${status.apiKey} apiSecret=${status.apiSecret} folder=${status.folder}`
   );
 }
 
 function ensureCloudinaryConfigured() {
   if (!isCloudinaryConfigured()) {
+    logCloudinaryConfigStatus("missing credentials");
     const error = new Error(
       "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET."
     );
@@ -36,13 +53,35 @@ function ensureCloudinaryConfigured() {
 
   if (!configured) {
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
+      cloud_name: envValue("CLOUDINARY_CLOUD_NAME"),
+      api_key: envValue("CLOUDINARY_API_KEY"),
+      api_secret: envValue("CLOUDINARY_API_SECRET"),
       secure: true,
     });
     configured = true;
+    logCloudinaryConfigStatus("sdk configured");
   }
+}
+
+/**
+ * Safe Cloudinary error line for Render logs. Never includes secrets.
+ */
+function logCloudinaryFailure(context, error, extra) {
+  const httpCode =
+    error?.http_code ||
+    error?.cause?.http_code ||
+    error?.error?.http_code ||
+    "";
+  const message = String(
+    error?.message || error?.cause?.message || "unknown cloudinary error"
+  )
+    .replace(/cloudinary:\/\/\S+/gi, "[redacted]")
+    .replace(/api_secret[=:]\S+/gi, "api_secret=[redacted]")
+    .slice(0, 400);
+  const detail = extra ? ` ${extra}` : "";
+  console.error(
+    `[cloudinary] ${context} code=${error?.code || ""} http=${httpCode || "n/a"} message=${message}${detail}`
+  );
 }
 
 function sanitizeSegment(value) {
@@ -126,7 +165,6 @@ function uploadBuffer({
   mimeType,
   folderParts,
   storedName,
-  originalName,
 }) {
   ensureCloudinaryConfigured();
 
@@ -139,51 +177,67 @@ function uploadBuffer({
   const resourceType = resourceTypeForMime(mimeType);
   const publicId = buildPublicId({ folderParts, storedName });
   const format = extensionForMime(mimeType);
+  // Keep the extension on the public_id for raw PDFs. Cloudinary rejects
+  // resource_type=raw together with the format option.
+  const publicIdWithExt =
+    resourceType === "raw" && format && format !== "bin"
+      ? `${publicId}.${format}`
+      : publicId;
 
   return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: resourceType,
-        public_id: publicId,
-        // Authenticated assets require signed access; backend streams them after JWT checks.
-        type: "authenticated",
-        overwrite: false,
-        unique_filename: false,
-        use_filename: false,
-        format,
-        context: originalName
-          ? `original_filename=${String(originalName).slice(0, 180)}`
-          : undefined,
-      },
-      (error, result) => {
-        if (error) {
-          const wrapped = new Error(
-            error.message || "Cloudinary upload failed."
-          );
-          wrapped.code = "CLOUDINARY_UPLOAD_FAILED";
-          wrapped.cause = error;
-          reject(wrapped);
-          return;
-        }
-        if (!result?.public_id) {
-          const wrapped = new Error("Cloudinary upload returned no public_id.");
-          wrapped.code = "CLOUDINARY_UPLOAD_FAILED";
-          reject(wrapped);
-          return;
-        }
+    const options = {
+      resource_type: resourceType,
+      public_id: publicIdWithExt,
+      // Authenticated assets require signed access; backend streams them after JWT checks.
+      type: "authenticated",
+      overwrite: false,
+      unique_filename: false,
+      use_filename: false,
+    };
+    if (resourceType === "image") {
+      options.format = format;
+    }
 
-        resolve({
-          publicId: result.public_id,
-          resourceType: result.resource_type || resourceType,
-          bytes: result.bytes || buffer.length,
-          format: result.format || format,
-          storagePath: encodeCloudinaryStoragePath(
-            result.resource_type || resourceType,
-            result.public_id
-          ),
-        });
+    const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
+      if (error) {
+        logCloudinaryFailure("upload failed", error, `resource=${resourceType}`);
+        const wrapped = new Error(error.message || "Cloudinary upload failed.");
+        wrapped.code = "CLOUDINARY_UPLOAD_FAILED";
+        wrapped.http_code = error.http_code;
+        wrapped.cause = error;
+        reject(wrapped);
+        return;
       }
-    );
+      if (!result?.public_id) {
+        logCloudinaryFailure(
+          "upload failed",
+          new Error("Cloudinary upload returned no public_id."),
+          `resource=${resourceType}`
+        );
+        const wrapped = new Error("Cloudinary upload returned no public_id.");
+        wrapped.code = "CLOUDINARY_UPLOAD_FAILED";
+        reject(wrapped);
+        return;
+      }
+
+      resolve({
+        publicId: result.public_id,
+        resourceType: result.resource_type || resourceType,
+        bytes: result.bytes || buffer.length,
+        format: result.format || format,
+        storagePath: encodeCloudinaryStoragePath(
+          result.resource_type || resourceType,
+          result.public_id
+        ),
+      });
+    });
+
+    stream.on("error", (error) => {
+      logCloudinaryFailure("upload stream error", error, `resource=${resourceType}`);
+      const wrapped = new Error(error.message || "Cloudinary upload stream failed.");
+      wrapped.code = "CLOUDINARY_UPLOAD_FAILED";
+      reject(wrapped);
+    });
 
     Readable.from(buffer).pipe(stream);
   });
@@ -208,6 +262,8 @@ async function downloadCloudinaryBuffer(storagePath) {
       `Cloudinary download failed (${response.status}).`
     );
     error.code = "CLOUDINARY_DOWNLOAD_FAILED";
+    error.http_code = response.status;
+    logCloudinaryFailure("download failed", error);
     throw error;
   }
   const arrayBuffer = await response.arrayBuffer();
@@ -222,6 +278,8 @@ async function openCloudinaryReadStream(storagePath) {
       `Cloudinary stream failed (${response.status}).`
     );
     error.code = "CLOUDINARY_DOWNLOAD_FAILED";
+    error.http_code = response.status;
+    logCloudinaryFailure("stream failed", error);
     throw error;
   }
   if (!response.body) {
@@ -251,7 +309,7 @@ async function destroyCloudinaryAsset(storagePath) {
       invalidate: true,
     });
   } catch (error) {
-    console.error("Cloudinary delete warning:", error.message || error);
+    logCloudinaryFailure("delete warning", error);
   }
 }
 
@@ -259,7 +317,10 @@ module.exports = {
   STORAGE_PREFIX,
   DEFAULT_FOLDER,
   getCloudinaryFolder,
+  cloudinaryCredentialStatus,
   isCloudinaryConfigured,
+  logCloudinaryConfigStatus,
+  logCloudinaryFailure,
   isCloudinaryStoragePath,
   parseCloudinaryStoragePath,
   encodeCloudinaryStoragePath,

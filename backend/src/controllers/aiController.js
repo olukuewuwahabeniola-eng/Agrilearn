@@ -482,6 +482,9 @@ async function assist(req, res) {
       error?.code === "CLOUDINARY_UPLOAD_FAILED" ||
       error?.code === "CLOUDINARY_DOWNLOAD_FAILED"
     ) {
+      console.error(
+        `[ai] storage error code=${error.code} http=${error.http_code || "n/a"} message=${String(error.message || "").slice(0, 300)}`
+      );
       return res.status(503).json({
         success: false,
         message:
