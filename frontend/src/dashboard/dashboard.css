@@ -2465,6 +2465,65 @@
   }
 }
 
+/* Mobile safety: prevent page-level horizontal scroll without redesigning layouts */
+.dash-main,
+.dash-content,
+.page-hero,
+.page-card,
+.notes-list,
+.pq-list,
+.lower-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dash-content table,
+.page-card table,
+.ai-md table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .notes-filters {
+    width: 100%;
+  }
+
+  .notes-upload {
+    width: 100%;
+  }
+
+  .dash-page-header {
+    flex-wrap: wrap;
+  }
+
+  .pq-preview-modal {
+    width: min(100%, 920px);
+    max-height: min(92vh, 900px);
+  }
+
+  .pq-preview-pdf {
+    min-height: 50vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-banner h1,
+  .page-hero h1,
+  .dash-page-header h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .course-card-body .code,
+  .course-card-body .title,
+  .notes-item-title,
+  .ai-history-title {
+    overflow-wrap: anywhere;
+  }
+}
+
 /* Past Questions preview */
 .pq-preview-backdrop {
   position: fixed;

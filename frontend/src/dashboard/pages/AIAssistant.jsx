@@ -23,9 +23,30 @@ import AiMarkdown from "../components/AiMarkdown";
 import { useLevelCourses } from "../hooks/useLevelCourses";
 import "./ai-assistant.css";
 
+function IconSpark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2.2 13.7 8.3 20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2.2Z" />
+    </svg>
+  );
+}
+
+function IconPlane() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3.5 11.5 20 4.5 13.2 21l-2.1-7.2L3.5 11.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * Shared AgriLearn AI Assistant for all academic levels.
- * ChatGPT-style layout + persistent conversations + PDF/image attachments.
+ * Visual layout follows the project-root reference; chat behaviour follows ChatGPT.
  */
 function AIAssistant() {
   const [params] = useSearchParams();
@@ -60,7 +81,7 @@ function AIAssistant() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
   const [historySearch, setHistorySearch] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [plusOpen, setPlusOpen] = useState(false);
 
@@ -199,7 +220,10 @@ function AIAssistant() {
       }
     };
     const onKeyDown = (event) => {
-      if (event.key === "Escape") setPlusOpen(false);
+      if (event.key === "Escape") {
+        setPlusOpen(false);
+        setHistoryOpen(false);
+      }
     };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -251,11 +275,13 @@ function AIAssistant() {
     clearAttachments();
     setPickerLibrary(null);
     setPlusOpen(false);
+    setHistoryOpen(false);
   };
 
   const openConversation = async (id) => {
     if (!id || loading) return;
     setLoading(true);
+    setHistoryOpen(false);
     try {
       const data = await getConversation(id);
       const convo = data.conversation;
@@ -478,396 +504,419 @@ function AIAssistant() {
     setLibrarySearch("");
   };
 
-  return (
-    <section
-      className={`page-hero ai-page ai-shell${historyOpen ? "" : " history-collapsed"}`}
-    >
-      <aside className={`ai-history-panel${historyOpen ? "" : " is-collapsed"}`}>
-        <div className="ai-history-brand">
-          <div className="ai-history-brand-mark" aria-hidden="true">
-            AI
-          </div>
-          <div>
-            <strong>AgriLearn AI</strong>
-            <span>{level} Level</span>
-          </div>
-        </div>
+  const handleSummariseChip = () => {
+    if (hasAttachment) {
+      runAction(
+        "summarise",
+        "Please create a comprehensive study summary of the attached material."
+      );
+      return;
+    }
+    setQuestion("Summarise my lecture notes in detail.");
+    setPlusOpen(true);
+  };
 
+  const handleQuizChip = () => {
+    if (course || hasAttachment) {
+      runAction(
+        "quiz",
+        "Please generate practice quiz questions from the selected course or attached material."
+      );
+      return;
+    }
+    setQuestion("Generate practice questions for this topic.");
+  };
+
+  const composer = (placement) => (
+    <form className={`ai-compose ${placement}`} onSubmit={handleAsk}>
+      <div className="ai-plus-wrap" ref={plusMenuRef}>
         <button
           type="button"
-          className="ai-history-new"
-          onClick={startNewChat}
-          disabled={loading}
+          className={`ai-plus-btn${plusOpen ? " open" : ""}`}
+          aria-label="Add attachment"
+          aria-expanded={plusOpen}
+          disabled={loading || uploading}
+          onClick={() => setPlusOpen((open) => !open)}
         >
-          + New chat
+          +
         </button>
+        {plusOpen ? (
+          <div className="ai-plus-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              className="ai-plus-item"
+              onClick={() => {
+                setPlusOpen(false);
+                pdfInputRef.current?.click();
+              }}
+            >
+              <span className="ai-plus-ico" style={{ background: "#dbeafe", color: "#2563eb" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 1.5V9h4.5L14 4.5Z" />
+                </svg>
+              </span>
+              <span>
+                <strong>Upload PDF or Document</strong>
+                <span>Notes, study materials, etc.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="ai-plus-item"
+              onClick={() => {
+                setPlusOpen(false);
+                imageInputRef.current?.click();
+              }}
+            >
+              <span className="ai-plus-ico" style={{ background: "#dcfce7", color: "#16a34a" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm3 3a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 8-4.8-6-3.7 4.8-2.2-2.6L5 16h15Z" />
+                </svg>
+              </span>
+              <span>
+                <strong>Upload Image</strong>
+                <span>Diagrams, charts, etc.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="ai-plus-item"
+              onClick={() => openPicker("personal")}
+            >
+              <span className="ai-plus-ico" style={{ background: "#ede9fe", color: "#7c3aed" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5Z" />
+                </svg>
+              </span>
+              <span>
+                <strong>From My Uploads</strong>
+                <span>Your personal files</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="ai-plus-item"
+              onClick={() => openPicker("official")}
+            >
+              <span className="ai-plus-ico" style={{ background: "#ffedd5", color: "#ea580c" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H10l2 2h7.5A1.5 1.5 0 0 1 21 8.5V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6.5Z" />
+                </svg>
+              </span>
+              <span>
+                <strong>From General Materials</strong>
+                <span>Official AgriLearn resources</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="ai-plus-cancel"
+              onClick={() => setPlusOpen(false)}
+            >
+              <span className="ai-plus-ico" style={{ background: "#f3f4f6", color: "#6b7280" }}>
+                ×
+              </span>
+              Cancel
+            </button>
+          </div>
+        ) : null}
+      </div>
 
-        <label className="sr-only" htmlFor="ai-history-search">
-          Search conversations
-        </label>
-        <input
-          id="ai-history-search"
-          type="search"
-          className="ai-history-search"
-          placeholder="Search chats…"
-          value={historySearch}
-          onChange={(e) => setHistorySearch(e.target.value)}
-        />
+      <textarea
+        rows={1}
+        placeholder="Ask anything about agriculture..."
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        disabled={loading}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (!loading && question.trim()) {
+              e.currentTarget.form?.requestSubmit();
+            }
+          }
+        }}
+      />
 
-        {historyError ? <p className="ai-history-error">{historyError}</p> : null}
+      <button
+        type="submit"
+        className="ai-send-btn"
+        disabled={loading || !question.trim()}
+        aria-label="Send message"
+      >
+        <IconPlane />
+      </button>
+    </form>
+  );
 
-        <div className="ai-history-list" role="list">
-          {historyLoading ? (
-            <p className="ai-history-empty">Loading history…</p>
-          ) : history.length === 0 ? (
-            <p className="ai-history-empty">
-              {historySearch.trim()
-                ? "No conversations match your search."
-                : "Your chats will appear here."}
-            </p>
-          ) : (
-            history.map((item) => {
-              const active = conversationId === item.id;
-              return (
-                <div
-                  key={item.id}
-                  role="listitem"
-                  className={`ai-history-item${active ? " active" : ""}`}
-                >
-                  <button
-                    type="button"
-                    className="ai-history-open"
-                    onClick={() => openConversation(item.id)}
-                    disabled={loading}
-                  >
-                    <span className="ai-history-title">{item.title}</span>
-                    <span className="ai-history-meta">
-                      {item.courseCode
-                        ? `${item.courseCode} · `
-                        : `${item.level || level} Level · `}
-                      {formatConversationDate(item.updatedAt)}
-                    </span>
-                    {item.preview ? (
-                      <span className="ai-history-preview">{item.preview}</span>
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    className="ai-history-delete"
-                    title="Delete conversation"
-                    aria-label={`Delete ${item.title}`}
-                    onClick={() => handleDeleteConversation(item.id, item.title)}
-                    disabled={loading}
-                  >
-                    Delete
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </aside>
-
-      <div className="ai-main">
-        <header className="ai-topbar">
+  const attachmentRow = (attachmentChips.length > 0 || uploading) && (
+    <div className="ai-attach-row">
+      {uploading ? <span className="ai-attach-status">Saving PDF…</span> : null}
+      {attachmentChips.map((chip) => (
+        <span key={chip.id} className="ai-attach-chip">
+          <span>
+            <strong>{chip.label}</strong>
+            <em>{chip.meta}</em>
+          </span>
           <button
             type="button"
-            className="ai-topbar-history"
+            aria-label={`Remove ${chip.label}`}
+            onClick={() => removeChip(chip.kind)}
+            disabled={loading || uploading}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+
+  return (
+    <section className="page-hero ai-page ai-shell">
+      <header className="ai-ref-top">
+        <div className="ai-ref-brand">
+          <span className="ai-spark">
+            <IconSpark />
+          </span>
+          <div>
+            <h1>AI Assistant</h1>
+            <p>Ask. Learn. Grow.</p>
+          </div>
+        </div>
+        <div className="ai-ref-actions">
+          <button
+            type="button"
+            className="ai-ghost-btn"
             onClick={() => setHistoryOpen((open) => !open)}
             aria-expanded={historyOpen}
           >
-            {historyOpen ? "Hide chats" : "Chats"}
+            Chats
           </button>
-          <div className="ai-topbar-title">
-            <strong>{conversationTitle}</strong>
-            <span>
-              {conversationId
-                ? "Saved to your account"
-                : "Saves after your first message"}
-            </span>
-          </div>
           <button
             type="button"
-            className="ai-topbar-new"
+            className="ai-ghost-btn"
             onClick={startNewChat}
             disabled={loading}
           >
             New chat
           </button>
-        </header>
-
-        <div className="ai-chat-stage" ref={chatLogRef} aria-live="polite">
-          {!conversationStarted && !loading ? (
-            <div className="ai-welcome">
-              <div className="ai-welcome-mark" aria-hidden="true">
-                AI
-              </div>
-              <h1>How can AgriLearn AI help today?</h1>
-              <p>
-                Ask course questions, attach lecture notes or images, summarise
-                materials, or generate a practice quiz.
-              </p>
-              <div className="ai-welcome-actions">
-                <button
-                  type="button"
-                  className="ai-welcome-chip"
-                  onClick={() =>
-                    setQuestion("Explain this topic step by step with examples.")
-                  }
-                >
-                  Explain a concept
-                </button>
-                <button
-                  type="button"
-                  className="ai-welcome-chip"
-                  disabled={!hasAttachment}
-                  onClick={() =>
-                    runAction(
-                      "summarise",
-                      "Please create a comprehensive study summary of the attached material."
-                    )
-                  }
-                >
-                  Summarise attachment
-                </button>
-                <button
-                  type="button"
-                  className="ai-welcome-chip"
-                  disabled={!course && !hasAttachment}
-                  onClick={() =>
-                    runAction(
-                      "quiz",
-                      "Please generate a practice quiz from the selected course or attached material."
-                    )
-                  }
-                >
-                  Practice quiz
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="ai-chat-log">
-              {messages.map((msg, index) => (
-                <article
-                  key={`${msg.role}-${index}-${msg.text?.slice(0, 12) || ""}`}
-                  className={`ai-row ${msg.role}`}
-                >
-                  <div className="ai-avatar" aria-hidden="true">
-                    {msg.role === "bot" ? "AI" : "You"}
-                  </div>
-                  <div className={`ai-bubble ${msg.role}`}>
-                    {msg.role === "bot" ? (
-                      <AiMarkdown content={msg.text} />
-                    ) : (
-                      <p className="ai-user-text">{msg.text}</p>
-                    )}
-                  </div>
-                </article>
-              ))}
-
-              {loading ? (
-                <article className="ai-row bot ai-loading-row">
-                  <div className="ai-avatar" aria-hidden="true">
-                    AI
-                  </div>
-                  <div className="ai-bubble bot ai-loading-bubble">
-                    <span className="ai-loading-label">Thinking</span>
-                    <span className="ai-typing" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  </div>
-                </article>
-              ) : null}
-            </div>
-          )}
         </div>
+      </header>
 
-        <div className="ai-composer-dock">
-          {(attachmentChips.length > 0 || uploading) && (
-            <div className="ai-attach-row">
-              {uploading ? (
-                <span className="ai-attach-status">Saving PDF…</span>
-              ) : null}
-              {attachmentChips.map((chip) => (
-                <span key={chip.id} className="ai-attach-chip">
-                  <span>
-                    <strong>{chip.label}</strong>
-                    <em>{chip.meta}</em>
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${chip.label}`}
-                    onClick={() => removeChip(chip.kind)}
-                    disabled={loading || uploading}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+      <div className="ai-body">
+        <img className="ai-farm" src="/ai-farm.png" alt="" />
 
-          <div className="ai-tool-row">
-            <label className="sr-only" htmlFor="ai-course">
-              Select course
-            </label>
-            <select
-              id="ai-course"
-              value={course}
-              onChange={(e) => {
-                setCourse(e.target.value);
-                clearAttachments();
-              }}
-              disabled={loading || uploading}
-            >
-              <option value="">Course (optional)</option>
-              {courses.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.code} — {item.title}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              className="ai-tool-btn"
-              disabled={loading || uploading || !hasAttachment}
-              onClick={() =>
-                runAction(
-                  "summarise",
-                  "Please create a comprehensive study summary of the attached material."
-                )
-              }
-            >
-              Summarise
-            </button>
-            <button
-              type="button"
-              className="ai-tool-btn"
-              disabled={loading || uploading || (!course && !hasAttachment)}
-              onClick={() =>
-                runAction(
-                  "quiz",
-                  "Please generate a practice quiz from the selected course or attached material."
-                )
-              }
-            >
-              Quiz
-            </button>
-            {pendingQuizCourse ? (
+        {!conversationStarted && !loading ? (
+          <div className="ai-welcome-wrap">
+            <img className="ai-mascot" src="/ai-mascot.png" alt="" />
+            <h2 className="ai-hello">Hello, Learner! 👋</h2>
+            <p className="ai-hello-sub">
+              Your AgriLearn AI assistant is here to help you summarize notes,
+              answer questions and more.
+            </p>
+            <div className="ai-chip-row">
+              <button type="button" className="ai-chip" onClick={handleSummariseChip}>
+                Summarize this document
+              </button>
+              <button type="button" className="ai-chip" onClick={handleQuizChip}>
+                Generate quiz questions
+              </button>
               <button
                 type="button"
-                className="ai-tool-btn ai-tool-btn-primary"
-                disabled={markingQuiz || loading}
-                onClick={handleMarkQuizCompleted}
-              >
-                {markingQuiz
-                  ? "Saving…"
-                  : `Mark ${pendingQuizCourse} quiz done`}
-              </button>
-            ) : null}
-          </div>
-
-          <form className="ai-compose" onSubmit={handleAsk}>
-            <div className="ai-plus-wrap" ref={plusMenuRef}>
-              <button
-                type="button"
-                className={`ai-plus-btn${plusOpen ? " open" : ""}`}
-                aria-label="Add attachment"
-                aria-expanded={plusOpen}
-                disabled={loading || uploading}
-                onClick={() => setPlusOpen((open) => !open)}
-              >
-                +
-              </button>
-              {plusOpen ? (
-                <div className="ai-plus-menu" role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setPlusOpen(false);
-                      pdfInputRef.current?.click();
-                    }}
-                  >
-                    Upload PDF or Document
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setPlusOpen(false);
-                      imageInputRef.current?.click();
-                    }}
-                  >
-                    Upload Image
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => openPicker("personal")}
-                  >
-                    From My Uploads
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => openPicker("official")}
-                  >
-                    From General Materials
-                  </button>
-                </div>
-              ) : null}
-            </div>
-
-            <textarea
-              rows={1}
-              placeholder="Message AgriLearn AI…"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              disabled={loading}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (!loading && question.trim()) {
-                    e.currentTarget.form?.requestSubmit();
-                  }
+                className="ai-chip"
+                onClick={() =>
+                  setQuestion("Explain this topic step by step with examples.")
                 }
-              }}
-            />
-
-            <button
-              type="submit"
-              className="ai-send-btn"
-              disabled={loading || !question.trim()}
-              aria-label="Send message"
-            >
-              {loading ? "…" : "Send"}
-            </button>
-          </form>
-
-          <input
-            ref={pdfInputRef}
-            type="file"
-            accept="application/pdf"
-            className="sr-only"
-            tabIndex={-1}
-            disabled={loading || uploading}
-            onChange={handlePdfChange}
-          />
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/jpeg,image/jpg,image/png,image/webp"
-            className="sr-only"
-            tabIndex={-1}
-            disabled={loading || uploading}
-            onChange={handleImageChange}
-          />
-        </div>
+              >
+                Explain this topic
+              </button>
+              <button
+                type="button"
+                className="ai-chip"
+                onClick={() =>
+                  setQuestion(
+                    "Give me study tips for understanding this agricultural concept."
+                  )
+                }
+              >
+                Study tips
+              </button>
+            </div>
+            <div className="ai-center-composer">
+              {attachmentRow}
+              {composer("center")}
+            </div>
+            <p className="ai-tagline">Learn smarter. Grow better.</p>
+          </div>
+        ) : (
+          <>
+            <div className="ai-chat-stage" ref={chatLogRef} aria-live="polite">
+              <div className="ai-chat-log">
+                {messages.map((msg, index) => (
+                  <article
+                    key={`${msg.role}-${index}-${msg.text?.slice(0, 12) || ""}`}
+                    className={`ai-row ${msg.role}`}
+                  >
+                    <div className="ai-avatar" aria-hidden="true">
+                      {msg.role === "bot" ? "AI" : "You"}
+                    </div>
+                    <div className={`ai-bubble ${msg.role}`}>
+                      {msg.role === "bot" ? (
+                        <AiMarkdown content={msg.text} />
+                      ) : (
+                        <p className="ai-user-text">{msg.text}</p>
+                      )}
+                    </div>
+                  </article>
+                ))}
+                {loading ? (
+                  <article className="ai-row bot ai-loading-row">
+                    <div className="ai-avatar" aria-hidden="true">
+                      AI
+                    </div>
+                    <div className="ai-bubble bot ai-loading-bubble">
+                      <span>Thinking</span>
+                      <span className="ai-typing" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    </div>
+                  </article>
+                ) : null}
+              </div>
+            </div>
+            <div className="ai-composer-dock">
+              {pendingQuizCourse ? (
+                <p className="ai-quiz-hint">
+                  Quiz generated for {pendingQuizCourse}.
+                  <button
+                    type="button"
+                    disabled={markingQuiz || loading}
+                    onClick={handleMarkQuizCompleted}
+                  >
+                    {markingQuiz ? "Saving…" : "Mark completed"}
+                  </button>
+                </p>
+              ) : null}
+              {attachmentRow}
+              {composer("dock")}
+            </div>
+          </>
+        )}
       </div>
+
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf"
+        className="sr-only"
+        tabIndex={-1}
+        disabled={loading || uploading}
+        onChange={handlePdfChange}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        className="sr-only"
+        tabIndex={-1}
+        disabled={loading || uploading}
+        onChange={handleImageChange}
+      />
+
+      {historyOpen ? (
+        <>
+          <button
+            type="button"
+            className="ai-history-backdrop"
+            aria-label="Close chat history"
+            onClick={() => setHistoryOpen(false)}
+          />
+          <aside className="ai-history-panel" aria-label="Conversation history">
+            <div className="ai-history-head">
+              <h2>Chats · {level} Level</h2>
+              <button
+                type="button"
+                className="ai-ghost-btn"
+                onClick={() => setHistoryOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <label className="sr-only" htmlFor="ai-history-search">
+              Search conversations
+            </label>
+            <input
+              id="ai-history-search"
+              type="search"
+              className="ai-history-search"
+              placeholder="Search chats…"
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+            />
+            {historyError ? (
+              <p className="ai-history-error">{historyError}</p>
+            ) : null}
+            <div className="ai-history-list" role="list">
+              {historyLoading ? (
+                <p className="ai-history-empty">Loading history…</p>
+              ) : history.length === 0 ? (
+                <p className="ai-history-empty">
+                  {historySearch.trim()
+                    ? "No conversations match your search."
+                    : "Your chats will appear here."}
+                </p>
+              ) : (
+                history.map((item) => {
+                  const active = conversationId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      role="listitem"
+                      className={`ai-history-item${active ? " active" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="ai-history-open"
+                        onClick={() => openConversation(item.id)}
+                        disabled={loading}
+                      >
+                        <span className="ai-history-title">{item.title}</span>
+                        <span className="ai-history-meta">
+                          {item.courseCode
+                            ? `${item.courseCode} · `
+                            : `${item.level || level} Level · `}
+                          {formatConversationDate(item.updatedAt)}
+                        </span>
+                        {item.preview ? (
+                          <span className="ai-history-preview">{item.preview}</span>
+                        ) : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="ai-history-delete"
+                        title="Delete conversation"
+                        aria-label={`Delete ${item.title}`}
+                        onClick={() =>
+                          handleDeleteConversation(item.id, item.title)
+                        }
+                        disabled={loading}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       {pickerLibrary ? (
         <div
@@ -907,7 +956,6 @@ function AIAssistant() {
                 Close
               </button>
             </header>
-
             <label className="sr-only" htmlFor="ai-picker-course">
               Course for materials
             </label>
@@ -924,7 +972,6 @@ function AIAssistant() {
                 </option>
               ))}
             </select>
-
             {!course ? (
               <p className="ai-picker-empty">
                 Choose a course to browse{" "}

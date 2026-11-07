@@ -251,6 +251,7 @@
 @media (max-width: 560px) {
   .auth-card {
     padding: 1.5rem 1.15rem;
+    width: min(100% - 1.1rem, 480px);
   }
 
   .auth-form .form-row {
@@ -260,4 +261,15 @@
   .auth-header-inner .logo-tagline {
     display: none;
   }
+
+  .auth-form .btn {
+    width: 100%;
+  }
+}
+
+.auth-page,
+.auth-main,
+.auth-card {
+  min-width: 0;
+  max-width: 100%;
 }

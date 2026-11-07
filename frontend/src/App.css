@@ -2,10 +2,15 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .app main {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Used while AuthProvider checks an existing login session */

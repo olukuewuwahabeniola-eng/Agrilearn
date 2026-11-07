@@ -682,6 +682,40 @@
   .admin-content {
     padding: 1rem 0.85rem 1.5rem;
   }
+
+  .admin-act-summary-grid,
+  .admin-act-advanced-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-topbar {
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+}
+
+.admin-shell,
+.admin-main,
+.admin-content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .admin-shell {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .admin-table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 /* —— Student Activity dashboard —— */

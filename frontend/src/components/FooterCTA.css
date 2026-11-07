@@ -52,3 +52,13 @@
   justify-content: center;
   gap: 0.75rem;
 }
+
+@media (max-width: 480px) {
+  .footer-cta {
+    padding: 3.25rem 0;
+  }
+
+  .footer-cta-actions .btn {
+    width: 100%;
+  }
+}

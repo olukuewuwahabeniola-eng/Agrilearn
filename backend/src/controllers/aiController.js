@@ -138,8 +138,9 @@ function buildPrompt({
   return (
     `${base}\n` +
     `Task: Answer the student's academic question for ${level} Level with appropriate depth.\n` +
-    `For complex topics, explain thoroughly with sections, key terms, agricultural examples, and practical applications.\n` +
+    `For complex topics, explain thoroughly with sections, definitions, how/why it happens, agricultural examples, and practical applications.\n` +
     `For simple questions, keep the answer clear and concise.\n` +
+    `Add a short Recap when the explanation is long.\n` +
     `If a document/image is attached, use it as the primary source and say when you add general academic context.\n` +
     `If a course is selected but no file is attached, teach from the course topic and sound academic knowledge.\n` +
     `Use Markdown formatting. Add Key takeaways when useful.\n\n` +

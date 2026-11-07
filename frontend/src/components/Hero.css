@@ -162,6 +162,10 @@
 }
 
 @media (max-width: 900px) {
+  .hero {
+    padding: 2.5rem 0 3rem;
+  }
+
   .hero-grid {
     grid-template-columns: 1fr;
     gap: 2rem;
@@ -180,6 +184,20 @@
     order: -1;
     max-width: 520px;
     margin-inline: auto;
+    width: 100%;
+  }
+
+  .hero-ctas {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    padding: 1.75rem 0 2.25rem;
+  }
+
+  .hero-ctas .btn {
     width: 100%;
   }
 }

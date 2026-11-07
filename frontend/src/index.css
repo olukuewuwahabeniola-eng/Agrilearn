@@ -33,6 +33,7 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: var(--nav-height);
+  overflow-x: clip;
 }
 
 body {
@@ -41,10 +42,22 @@ body {
   background: var(--white);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+  width: 100%;
 }
 
-img {
+#root {
+  min-width: 0;
   max-width: 100%;
+  overflow-x: clip;
+}
+
+img,
+video,
+svg,
+canvas {
+  max-width: 100%;
+  height: auto;
   display: block;
 }
 
@@ -165,5 +178,23 @@ ul {
 
   .container {
     width: min(100% - 1.5rem, var(--container));
+  }
+
+  .btn {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    width: min(100% - 1.1rem, var(--container));
+  }
+
+  .section {
+    padding: 2.75rem 0;
+  }
+
+  .section-title {
+    font-size: clamp(1.35rem, 6vw, 1.75rem);
   }
 }
