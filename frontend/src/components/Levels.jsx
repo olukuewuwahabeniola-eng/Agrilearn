@@ -4,34 +4,30 @@ const LEVELS = [
   {
     level: "100 Level",
     label: "Foundation",
-    text: "Build strong basics for your agriculture journey.",
-    image:
-      "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=800&q=80",
-    alt: "Green crop field under open sky",
+    text: "Start strong with the core courses that shape your agriculture journey.",
+    image: "/home/level-100.jpg",
+    alt: "Young maize plants growing in a field",
   },
   {
     level: "200 Level",
     label: "Growing",
-    text: "Deepen course understanding with focused materials.",
-    image:
-      "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&w=800&q=80",
-    alt: "Farmer working among healthy crops",
+    text: "Build on the basics with focused notes and practice for your courses.",
+    image: "/home/level-200.jpg",
+    alt: "Farmers working a rice field with a tractor",
   },
   {
     level: "300 Level",
     label: "Advancing",
-    text: "Practice with more advanced notes and quizzes.",
-    image:
-      "https://images.unsplash.com/photo-1464226184884-fa280b87c399?auto=format&fit=crop&w=800&q=80",
-    alt: "Fresh vegetables harvested from the farm",
+    text: "Go deeper with course materials, quizzes, and past questions.",
+    image: "/home/level-300.jpg",
+    alt: "Fresh harvested vegetables at a market",
   },
   {
     level: "500 Level",
     label: "Excelling",
-    text: "Prepare for final-year excellence and beyond.",
-    image:
-      "https://images.unsplash.com/photo-1500937386664-56d1dfef3033?auto=format&fit=crop&w=800&q=80",
-    alt: "Sunrise over agricultural farmland",
+    text: "Prepare for final-year courses with organised materials and revision support.",
+    image: "/home/level-500.jpg",
+    alt: "Established crop rows stretching across farmland",
   },
 ];
 
@@ -39,10 +35,10 @@ function Levels() {
   return (
     <section id="levels" className="levels section">
       <div className="container">
-        <h2 className="section-title reveal">Academic Levels</h2>
+        <h2 className="section-title reveal">Academic levels</h2>
         <p className="section-subtitle reveal">
-          Explore learning resources organised for 100, 200, 300 and 500 level
-          students.
+          Your dashboard opens the courses and materials for your level — 100,
+          200, 300 or 500.
         </p>
 
         <div className="levels-grid">

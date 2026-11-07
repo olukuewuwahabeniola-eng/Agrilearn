@@ -30,6 +30,8 @@
 
 .footer-copy {
   font-size: 0.88rem;
+  overflow-wrap: anywhere;
+  max-width: 28rem;
 }
 
 .footer-links {

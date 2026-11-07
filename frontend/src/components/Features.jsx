@@ -2,8 +2,8 @@ import "./Features.css";
 
 const FEATURES = [
   {
-    title: "Organized Course Notes",
-    text: "Access clear lecture notes and PDFs organised by academic level.",
+    title: "Organised course notes",
+    text: "Open official lecture notes and PDFs for your courses, arranged by academic level.",
     tone: "blue",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -13,8 +13,8 @@ const FEATURES = [
     ),
   },
   {
-    title: "Practice Quizzes",
-    text: "Test your knowledge with practice questions designed for revision.",
+    title: "Practice quizzes",
+    text: "Revise with practice quizzes for your courses, including quizzes you generate with the AI assistant.",
     tone: "green",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -24,8 +24,8 @@ const FEATURES = [
     ),
   },
   {
-    title: "Track Your Progress",
-    text: "See what you have completed and stay motivated through the semester.",
+    title: "Track your progress",
+    text: "See completed topics and stay on top of your courses as the semester moves along.",
     tone: "teal",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -35,8 +35,8 @@ const FEATURES = [
     ),
   },
   {
-    title: "All Levels Supported",
-    text: "Resources for 100, 200, 300 and 500 level agriculture courses.",
+    title: "Every level welcome",
+    text: "Resources for 100, 200, 300 and 500 Level agriculture students, matched to your courses.",
     tone: "yellow",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -51,9 +51,10 @@ function Features() {
   return (
     <section id="features" className="features section">
       <div className="container">
-        <h2 className="section-title reveal">What You&apos;ll Get</h2>
+        <h2 className="section-title reveal">What you will find here</h2>
         <p className="section-subtitle reveal">
-          Simple tools to help you study better and grow as an agripreneur.
+          Practical study tools for Faculty of Agriculture students — from first
+          year through final year.
         </p>
 
         <div className="feature-grid">

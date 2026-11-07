@@ -5,27 +5,27 @@ const FAQS = [
   {
     question: "Who is AgriLearn for?",
     answer:
-      "AgriLearn is for Faculty of Agriculture students who want organised lecture notes, practice questions, and a simple way to track their learning progress.",
+      "AgriLearn is for Faculty of Agriculture students who want lecture notes, past questions, practice quizzes, and a simple way to follow their learning progress.",
   },
   {
     question: "Which academic levels are supported?",
     answer:
-      "The platform is designed to support 100, 200, 300 and 500 level students with materials organised by level.",
+      "AgriLearn supports 100, 200, 300 and 500 Level students. After you sign up, you will see the courses and materials for your level.",
   },
   {
     question: "Is AgriLearn free to use?",
     answer:
-      "Sign up and log in will be available when accounts are ready. For now, you can explore the homepage and learn what AgriLearn offers.",
+      "Yes. Create a free student account to open your dashboard, course materials, quizzes, and the AI assistant.",
   },
   {
-    question: "Can I practice with quizzes?",
+    question: "Can I practise with quizzes?",
     answer:
-      "Yes. Practice quizzes are one of the core features planned so you can revise and check your understanding.",
+      "Yes. You can take practice quizzes for your courses and generate revision quizzes with the AgriLearn AI assistant.",
   },
   {
     question: "How do I get started?",
     answer:
-      "Browse the sections on this page to learn more. When registration opens, use the Sign Up button to create your account.",
+      "Select Sign Up, create your student account, then log in. Your level dashboard will be ready with your courses and study tools.",
   },
 ];
 
@@ -39,9 +39,9 @@ function FAQ() {
   return (
     <section id="faqs" className="faqs section">
       <div className="container">
-        <h2 className="section-title">FAQs</h2>
+        <h2 className="section-title">Frequently asked questions</h2>
         <p className="section-subtitle">
-          Quick answers about AgriLearn and how it helps you study.
+          A few quick answers about studying with AgriLearn.
         </p>
 
         <div className="faq-list">

@@ -70,6 +70,6 @@
 }
 
 .faq-item.open .faq-answer {
-  max-height: 220px;
+  max-height: 320px;
   padding: 0 1.25rem 1.15rem;
 }

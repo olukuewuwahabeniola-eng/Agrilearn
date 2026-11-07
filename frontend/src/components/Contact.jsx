@@ -81,7 +81,7 @@ function Contact() {
       setStatus({
         type: "error",
         message:
-          "Email delivery is almost ready. Add your EmailJS Service ID and Public Key to frontend/.env.local, then restart the site.",
+          "We could not send your message right now. Please email agrilearn22@gmail.com and we will get back to you.",
       });
       return;
     }
@@ -119,10 +119,10 @@ function Contact() {
     <section id="contact" className="contact section">
       <div className="container contact-grid">
         <div className="contact-intro reveal">
-          <h2 className="section-title">Contact</h2>
+          <h2 className="section-title">Get in touch</h2>
           <p>
-            Have a question about AgriLearn? Send a message and we will get back
-            to you when support is available.
+            Have a question about AgriLearn? Send us a message and we will be
+            glad to help.
           </p>
 
           <div className="contact-points">

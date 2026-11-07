@@ -76,19 +76,23 @@
 }
 
 .about-image {
-  width: 110px;
-  height: 110px;
+  width: 148px;
+  height: 148px;
   border-radius: 50%;
   overflow: hidden;
-  border: 4px solid var(--green-mint);
+  border: 5px solid var(--green-mint);
+  box-shadow: 0 8px 20px rgba(20, 83, 45, 0.12);
   flex-shrink: 0;
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
+  background: var(--green-pale);
 }
 
 .about-image img {
   width: 100%;
   height: 100%;
+  max-width: none;
   object-fit: cover;
+  object-position: center 62%;
 }
 
 .objectives-list {
@@ -139,8 +143,8 @@
   }
 
   .about-image {
-    width: 90px;
-    height: 90px;
+    width: 120px;
+    height: 120px;
     margin-inline: auto;
   }
 }

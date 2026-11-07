@@ -1,15 +1,12 @@
 import { Link } from "react-router-dom";
 import "./FooterCTA.css";
 
-const FIELD_IMAGE =
-  "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=1600&q=80";
-
 function FooterCTA() {
   return (
     <section className="footer-cta">
       <div className="footer-cta-bg" aria-hidden="true">
         <img
-          src={FIELD_IMAGE}
+          src="/home/cta-field.jpg"
           alt=""
           width="1600"
           height="600"
@@ -22,6 +19,9 @@ function FooterCTA() {
           “Together, let’s build a smarter, brighter future in{" "}
           <strong>Agriculture</strong>.”
         </blockquote>
+        <p className="footer-cta-lead">
+          Create your free student account and start learning with AgriLearn.
+        </p>
 
         <div className="footer-cta-actions">
           <Link to="/signup" className="btn btn-white">

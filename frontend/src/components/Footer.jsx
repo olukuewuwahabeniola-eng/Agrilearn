@@ -12,7 +12,8 @@ function Footer() {
         </div>
 
         <p className="footer-copy">
-          © {year} AgriLearn. Learn • Practice • Excel
+          © {year} AgriLearn. A learning home for agriculture students. Learn •
+          Practice • Excel
         </p>
 
         <nav className="footer-links" aria-label="Footer">

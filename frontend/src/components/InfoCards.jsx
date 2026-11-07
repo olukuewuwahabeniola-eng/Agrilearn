@@ -1,13 +1,10 @@
 import "./InfoCards.css";
 
-const SPROUT_IMAGE =
-  "https://images.unsplash.com/photo-1466692476866-aef1dfb1e735?auto=format&fit=crop&w=400&q=80";
-
 const OBJECTIVES = [
-  "Make lecture notes easily accessible.",
-  "Provide practice questions and quizzes.",
-  "Track student progress.",
-  "Support academic success in the Faculty of Agriculture.",
+  "Give students easy access to lecture notes and PDFs.",
+  "Support revision with practice quizzes and past questions.",
+  "Help students track their learning progress.",
+  "Strengthen academic success in the Faculty of Agriculture.",
 ];
 
 function CheckIcon() {
@@ -34,20 +31,20 @@ function InfoCards() {
             </div>
             <h3>About AgriLearn</h3>
             <p>
-              AgriLearn is a learning platform built for Faculty of Agriculture
-              students. Find course materials, practice with quizzes, and stay
-              organised as you move through your academic journey.
+              AgriLearn brings your agriculture courses together in one place.
+              Open your level, download course materials, revise with quizzes,
+              ask the AI assistant, and see how your study is progressing.
             </p>
             <a href="#features" className="info-link">
-              Learn More <span aria-hidden="true">→</span>
+              See what you can do <span aria-hidden="true">→</span>
             </a>
           </div>
           <div className="about-image">
             <img
-              src={SPROUT_IMAGE}
-              alt="Young plant sprout growing in soil"
-              width="110"
-              height="110"
+              src="/home/about-circle.jpg"
+              alt="Fresh vegetables growing in a garden bed"
+              width="160"
+              height="160"
               loading="lazy"
             />
           </div>
@@ -63,9 +60,8 @@ function InfoCards() {
           </div>
           <h3>Our Aim</h3>
           <p>
-            To help agriculture students learn with clarity and confidence —
-            by putting notes, practice, and progress tracking in one simple
-            place.
+            To help agriculture students learn with clarity and confidence, by
+            keeping notes, practice, and progress tracking in one simple home.
           </p>
         </article>
 

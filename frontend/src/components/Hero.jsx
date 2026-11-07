@@ -1,7 +1,5 @@
+import { Link } from "react-router-dom";
 import "./Hero.css";
-
-const HERO_IMAGE =
-  "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1200&q=80";
 
 function Hero() {
   return (
@@ -37,16 +35,17 @@ function Hero() {
           </h1>
 
           <p className="hero-text">
-            Your go-to platform for lecture notes, practice questions, and
-            tracking your progress as you grow into a skilled agripreneur.
+            AgriLearn is the learning platform for Faculty of Agriculture
+            students. Find lecture notes, past questions, practice quizzes, and
+            an AI study assistant — organised by your academic level.
           </p>
 
           <div className="hero-ctas">
-            <a href="#features" className="btn btn-primary">
-              Get Started <span aria-hidden="true">→</span>
-            </a>
-            <a href="#about" className="btn btn-outline">
-              Learn More
+            <Link to="/signup" className="btn btn-primary">
+              Create your account <span aria-hidden="true">→</span>
+            </Link>
+            <a href="#features" className="btn btn-outline">
+              Explore features
             </a>
           </div>
         </div>
@@ -55,8 +54,8 @@ function Hero() {
           <p className="hero-script">Study Smarter... Grow Greater...</p>
           <div className="hero-image-wrap">
             <img
-              src={HERO_IMAGE}
-              alt="Students collaborating outdoors with a laptop"
+              src="/home/hero-students.jpg"
+              alt="Students studying together with laptops"
               width="800"
               height="600"
               loading="eager"
