@@ -4,6 +4,7 @@ const {
   uploadNote,
   getNote,
   downloadNoteFile,
+  downloadNotePageFile,
   deleteNote,
 } = require("../controllers/notesController");
 const { protect } = require("../middleware/authMiddleware");
@@ -15,6 +16,7 @@ const router = express.Router();
 router.get("/", requireDb, protect, listNotes);
 router.post("/", requireDb, protect, uploadNote);
 router.get("/:id", requireDb, protect, getNote);
+router.get("/:id/files/:fileIndex/file", requireDb, protect, downloadNotePageFile);
 router.get("/:id/file", requireDb, protect, downloadNoteFile);
 router.delete("/:id", requireDb, protect, deleteNote);
 

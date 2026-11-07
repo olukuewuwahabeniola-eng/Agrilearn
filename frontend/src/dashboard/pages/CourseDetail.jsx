@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import NoteViewer from "../../components/notes/NoteViewer";
 import {
-  downloadNoteFile,
-  fetchNoteFileBlob,
+  downloadNote,
+  fetchNotePreviewUrls,
   formatBytes,
   formatNoteDate,
   listNotes,
+  noteFormatLabel,
 } from "../../utils/notesApi";
 import { recordCourseAccess } from "../../utils/dashboardApi";
 import PageHeader from "../components/PageHeader";
@@ -21,7 +23,7 @@ function CourseDetail() {
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState("");
   const [preview, setPreview] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewUrls, setPreviewUrls] = useState([]);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ function CourseDetail() {
       );
     } catch (error) {
       setNotes([]);
-      setNotesError(error.message || "Could not load PDF materials.");
+      setNotesError(error.message || "Could not load course materials.");
     } finally {
       setNotesLoading(false);
     }
@@ -68,13 +70,13 @@ function CourseDetail() {
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [previewUrl]);
+  }, [previewUrls]);
 
   const closePreview = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl("");
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
     setPreview(null);
   };
 
@@ -82,13 +84,13 @@ function CourseDetail() {
     setPreview(note);
     setPreviewLoading(true);
     setNotesError("");
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl("");
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
     try {
-      const blob = await fetchNoteFileBlob(note.id);
-      setPreviewUrl(URL.createObjectURL(blob));
+      const urls = await fetchNotePreviewUrls(note);
+      setPreviewUrls(urls);
     } catch (err) {
-      setNotesError(err.message || "Could not open PDF.");
+      setNotesError(err.message || "Could not open that note.");
       setPreview(null);
     } finally {
       setPreviewLoading(false);
@@ -115,20 +117,20 @@ function CourseDetail() {
       />
 
       <div className="section-head">
-        <h2>PDF materials</h2>
+        <h2>Course materials</h2>
       </div>
 
       {notesError ? <p className="notes-error">{notesError}</p> : null}
 
       {notesLoading ? (
         <div className="empty-state">
-          <strong>Loading PDFs…</strong>
-          Fetching materials for this course.
+          <strong>Loading materials…</strong>
+          Fetching notes for this course.
         </div>
       ) : notes.length === 0 ? (
         <div className="empty-state">
-          <strong>No PDF materials yet</strong>
-          There are no PDFs available for this course right now.
+          <strong>No course materials yet</strong>
+          There are no official notes available for this course right now.
         </div>
       ) : (
         <ul className="course-notes-list">
@@ -137,7 +139,9 @@ function CourseDetail() {
               <div>
                 <strong>{note.title}</strong>
                 <span>
-                  {note.originalName}
+                  {noteFormatLabel(note)}
+                  {note.pageCount > 1 ? ` · ${note.pageCount} pages` : ""}
+                  {note.originalName ? ` · ${note.originalName}` : ""}
                   {note.size ? ` · ${formatBytes(note.size)}` : ""}
                   {note.createdAt ? ` · ${formatNoteDate(note.createdAt)}` : ""}
                 </span>
@@ -154,10 +158,9 @@ function CourseDetail() {
                   type="button"
                   className="link-btn"
                   onClick={() =>
-                    downloadNoteFile(
-                      note.id,
-                      note.originalName || "notes.pdf"
-                    ).catch((err) => setNotesError(err.message))
+                    downloadNote(note).catch((err) =>
+                      setNotesError(err.message)
+                    )
                   }
                 >
                   Download
@@ -168,64 +171,17 @@ function CourseDetail() {
         </ul>
       )}
 
-      {preview ? (
-        <div
-          className="pq-preview-backdrop"
-          role="presentation"
-          onClick={closePreview}
-        >
-          <div
-            className="pq-preview-modal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header className="pq-preview-head">
-              <div>
-                <h2>{preview.title}</h2>
-                <p className="muted">
-                  {course.code} — {course.title}
-                  {preview.originalName ? ` · ${preview.originalName}` : ""}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={closePreview}
-              >
-                Close
-              </button>
-            </header>
-
-            {previewLoading ? (
-              <p className="notes-status">Loading preview…</p>
-            ) : null}
-
-            {!previewLoading && previewUrl ? (
-              <iframe
-                title={`${preview.title} PDF`}
-                className="pq-preview-pdf"
-                src={previewUrl}
-              />
-            ) : null}
-
-            <footer className="pq-preview-foot">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() =>
-                  downloadNoteFile(
-                    preview.id,
-                    preview.originalName || "notes.pdf"
-                  ).catch((err) => setNotesError(err.message))
-                }
-              >
-                Download
-              </button>
-            </footer>
-          </div>
-        </div>
-      ) : null}
+      <NoteViewer
+        note={preview}
+        urls={previewUrls}
+        loading={previewLoading}
+        error={notesError}
+        onClose={closePreview}
+        onDownload={() =>
+          preview &&
+          downloadNote(preview).catch((err) => setNotesError(err.message))
+        }
+      />
     </section>
   );
 }

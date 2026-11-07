@@ -11,7 +11,10 @@ const AssignmentSubmission = require("../models/AssignmentSubmission");
 const AdminAuditLog = require("../models/AdminAuditLog");
 const { ALLOWED_LEVELS } = require("../models/Student");
 const { resolveNoteSource } = require("../utils/noteAccess");
-const { deleteStoredNoteFile } = require("../utils/noteStorage");
+const {
+  allNoteStoragePaths,
+  deleteStoredNoteFilesForNote,
+} = require("../utils/noteStorage");
 const { deletePastQuestionFiles } = require("../utils/pastQuestionStorage");
 
 const CONFIRM_PHRASE = "DELETE";
@@ -62,6 +65,7 @@ async function writeAuditLog({
 
 function noteToResourceRow(note) {
   const source = resolveNoteSource(note);
+  const publicNote = note.toPublicObject();
   return {
     id: note._id.toString(),
     kind: "note",
@@ -71,10 +75,10 @@ function noteToResourceRow(note) {
     courseTitle: note.courseTitle || "",
     level: note.level,
     source,
-    mimeType: note.mimeType || "application/pdf",
-    fileType: "PDF",
+    mimeType: publicNote.mimeType || note.mimeType || "application/pdf",
+    fileType: publicNote.fileType || "PDF",
+    pageCount: publicNote.pageCount || 1,
     size: note.size,
-    storagePath: note.storagePath,
     studentOwner: note.studentOwner ? String(note.studentOwner) : null,
     createdAt: note.createdAt,
   };
@@ -149,12 +153,10 @@ async function deleteNoteDocuments(notes) {
   for (const note of notes) {
     const id = note._id.toString();
     try {
-      // Only the path stored on this note document — never a shared/global wipe.
-      if (note.storagePath) {
-        await deleteStoredNoteFile(note.storagePath);
-        filesRemoved += 1;
-      }
+      const pathCount = allNoteStoragePaths(note).length;
       await note.deleteOne();
+      await deleteStoredNoteFilesForNote(note);
+      filesRemoved += pathCount;
       deletedIds.push(id);
     } catch (error) {
       failed.push({ id, reason: error.message || "Note delete failed." });

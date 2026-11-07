@@ -143,14 +143,15 @@ async function buildProgressSnapshot(student, courseCode = "") {
 }
 
 function toRecentUploadFromNote(note) {
+  const publicNote = note.toPublicObject();
   return {
     id: note._id.toString(),
     kind: "note",
     title: note.title,
     courseCode: note.courseCode,
     courseTitle: note.courseTitle || "",
-    fileType: "PDF",
-    mimeType: note.mimeType || "application/pdf",
+    fileType: publicNote.fileType || "PDF",
+    mimeType: publicNote.mimeType || note.mimeType || "application/pdf",
     createdAt: note.createdAt,
     viewPath: "notes",
   };

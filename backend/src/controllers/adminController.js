@@ -1,5 +1,4 @@
 const bcrypt = require("bcryptjs");
-const multer = require("multer");
 const mongoose = require("mongoose");
 const Admin = require("../models/Admin");
 const Student = require("../models/Student");
@@ -10,13 +9,16 @@ const {
   findCourseForStudent,
 } = require("../data/coursesByLevel");
 const { ALLOWED_LEVELS } = require("../models/Student");
+const { deleteStoredNoteFile } = require("../utils/noteStorage");
 const {
-  MAX_PDF_BYTES,
-  hashBuffer,
-  savePdfBuffer,
-  deleteStoredNoteFile,
-} = require("../utils/noteStorage");
-const { pdfTooLargeMessage } = require("../utils/uploadLimits");
+  runNotesUpload,
+  handleNotesUploadError,
+  collectNoteUploads,
+  combinedContentHash,
+  persistNotePages,
+  defaultNoteTitle,
+  findDuplicateNote,
+} = require("../utils/notesUpload");
 const { startOfTodayUtc } = require("../utils/activityTracker");
 const {
   applyAdminLevelFilter,
@@ -27,29 +29,6 @@ const {
 } = require("../utils/adminAccess");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PDF_BYTES, files: 1 },
-  fileFilter(req, file, cb) {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-      return;
-    }
-    cb(new Error("Only PDF files are allowed."));
-  },
-});
-
-const pdfUpload = upload.single("pdf");
-
-function runPdfUpload(req, res) {
-  return new Promise((resolve, reject) => {
-    pdfUpload(req, res, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-}
 
 /**
  * GET /api/admin/overview
@@ -339,12 +318,12 @@ async function listNotes(req, res) {
 
 /**
  * POST /api/admin/notes
- * Upload PDF for any academic level + course (admin).
- * uploadedBy is set to the admin's id for audit; students still level-gated on read.
+ * Official course notes: one PDF or multiple images as a single note.
+ * uploadedBy is the admin id for audit; students remain level-gated on read.
  */
 async function uploadNote(req, res) {
   try {
-    await runPdfUpload(req, res);
+    await runNotesUpload(req, res);
 
     const level = String(req.body?.level || "").trim();
     const courseCode = String(req.body?.courseCode || "").trim();
@@ -372,15 +351,16 @@ async function uploadNote(req, res) {
       });
     }
 
-    if (!req.file?.buffer?.length) {
+    const { format, files } = collectNoteUploads(req);
+    if (!files.length) {
       return res.status(400).json({
         success: false,
-        message: "Please choose a PDF file to upload.",
+        message: "Please choose a PDF or one or more images to upload.",
       });
     }
 
-    const contentHash = hashBuffer(req.file.buffer);
-    const existing = await NoteResource.findOne({
+    const contentHash = combinedContentHash(files.map((file) => file.buffer));
+    const existing = await findDuplicateNote({
       level,
       courseCode: course.code,
       contentHash,
@@ -391,40 +371,40 @@ async function uploadNote(req, res) {
       return res.status(200).json({
         success: true,
         duplicated: true,
-        message: "This PDF is already in the library for that course.",
+        message: "This note is already in the library for that course.",
         note: existing.toPublicObject(),
       });
     }
 
-    const saved = await savePdfBuffer({
-      buffer: req.file.buffer,
+    const savedFiles = await persistNotePages({
+      files,
+      format,
       level,
       courseCode: course.code,
-      originalName: req.file.originalname,
       folderKind: "notes/official",
     });
 
-    const title =
-      titleInput ||
-      String(req.file.originalname || "Lecture notes")
-        .replace(/\.pdf$/i, "")
-        .trim()
-        .slice(0, 160) ||
-      `${course.code} lecture notes`;
+    const first = savedFiles[0];
+    const title = defaultNoteTitle({
+      titleInput,
+      files,
+      format,
+      courseCode: course.code,
+    });
 
-    // NoteResource.uploadedBy refs Student. For admin uploads we still need an ObjectId;
-    // store admin id in uploadedBy for audit — schema is ObjectId without strict populate.
     let note;
     try {
       note = await NoteResource.create({
         title,
         description: description.slice(0, 500) || "Official AgriLearn material",
-        originalName: req.file.originalname || saved.storedName,
-        storedName: saved.storedName,
-        storagePath: saved.storagePath,
-        mimeType: req.file.mimetype || "application/pdf",
-        size: saved.size,
-        contentHash: saved.contentHash,
+        originalName: first.originalName,
+        storedName: first.storedName,
+        storagePath: first.storagePath,
+        mimeType: first.mimeType,
+        size: savedFiles.reduce((sum, file) => sum + file.size, 0),
+        contentHash,
+        format,
+        files: savedFiles,
         level,
         courseCode: course.code,
         courseTitle: course.title,
@@ -433,57 +413,56 @@ async function uploadNote(req, res) {
         uploadedBy: req.admin._id,
       });
     } catch (createError) {
-      await deleteStoredNoteFile(saved.storagePath);
+      await Promise.all(
+        savedFiles.map((file) => deleteStoredNoteFile(file.storagePath))
+      );
       throw createError;
     }
 
     return res.status(201).json({
       success: true,
       duplicated: false,
-      message: "PDF published to the course library.",
+      message:
+        format === "images"
+          ? `Published ${savedFiles.length} pages to the course library.`
+          : "PDF published to the course library.",
       note: note.toPublicObject(),
     });
   } catch (error) {
-    if (error instanceof multer.MulterError) {
-      if (error.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({
-          success: false,
-          message: pdfTooLargeMessage(),
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        message: "Could not read the uploaded PDF.",
-      });
-    }
-    if (error?.message === "Only PDF files are allowed.") {
-      return res.status(400).json({ success: false, message: error.message });
-    }
-    if (
-      error?.code === "CLOUDINARY_NOT_CONFIGURED" ||
-      error?.code === "CLOUDINARY_UPLOAD_FAILED"
-    ) {
-      console.error(
-        `[admin notes] upload storage error code=${error.code} http=${error.http_code || "n/a"} message=${String(error.message || "").slice(0, 300)}`
-      );
-      return res.status(503).json({
-        success: false,
-        message:
-          "File storage is temporarily unavailable. Please try again later.",
-      });
-    }
     if (error?.code === 11000) {
-      return res.status(200).json({
-        success: true,
-        duplicated: true,
-        message: "This PDF is already in the library for that course.",
-      });
+      try {
+        const level = String(req.body?.level || "").trim();
+        const courseCode = String(req.body?.courseCode || "").trim();
+        const course = findCourseForStudent(level, courseCode);
+        const { files } = collectNoteUploads(req);
+        const contentHash = files.length
+          ? combinedContentHash(files.map((file) => file.buffer))
+          : null;
+        if (course && contentHash) {
+          const existing = await findDuplicateNote({
+            level,
+            courseCode: course.code,
+            contentHash,
+            source: "official",
+          });
+          if (existing) {
+            return res.status(200).json({
+              success: true,
+              duplicated: true,
+              message: "This note is already in the library for that course.",
+              note: existing.toPublicObject(),
+            });
+          }
+        }
+      } catch {
+        /* fall through */
+      }
     }
-    console.error("Admin upload note error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Could not upload the PDF.",
-    });
+    return handleNotesUploadError(
+      error,
+      res,
+      "Could not upload the note. Please try again."
+    );
   }
 }
 

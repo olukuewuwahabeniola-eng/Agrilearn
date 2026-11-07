@@ -1,3 +1,5 @@
+import { uploadFormWithProgress } from "./uploadFormWithProgress";
+
 /**
  * Admin API helpers.
  * Auth: HTTP-only cookie (credentials) + optional Bearer token backup.
@@ -80,4 +82,27 @@ export async function adminFetch(path, options = {}) {
   }
 
   return data;
+}
+
+export async function uploadAdminNote(form, { onProgress } = {}) {
+  const url = `${getAdminApiBaseUrl()}/api/admin/notes`;
+  const token = getAdminToken();
+
+  if (typeof onProgress === "function") {
+    return uploadFormWithProgress({
+      url,
+      method: "POST",
+      form,
+      credentials: "include",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      onProgress,
+    });
+  }
+
+  return adminFetch("/api/admin/notes", {
+    method: "POST",
+    body: form,
+  });
 }

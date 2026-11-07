@@ -1656,6 +1656,20 @@
   white-space: nowrap;
 }
 
+.notes-personal-upload {
+  margin-top: 1rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  background: #f7fbf8;
+  min-width: 0;
+}
+
+.notes-personal-upload h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
 .notes-context {
   margin: 0.85rem 0 0;
   font-size: 0.88rem;
@@ -1858,6 +1872,7 @@
 
 .notes-card-actions > div {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.65rem;
 }
 
@@ -2643,7 +2658,8 @@
     width: 100%;
   }
 
-  .notes-upload {
+  .notes-upload,
+  .notes-personal-upload {
     width: 100%;
   }
 
@@ -2742,8 +2758,11 @@
 }
 
 .pq-preview-gallery img {
+  display: block;
+  width: 100%;
   max-width: 100%;
   height: auto;
+  object-fit: contain;
   border-radius: 12px;
   border: 1px solid var(--dash-border);
   background: #f7fbf8;

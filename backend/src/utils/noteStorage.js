@@ -4,7 +4,12 @@ const fsp = require("fs/promises");
 const path = require("path");
 const {
   MAX_PDF_BYTES,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_TOTAL_BYTES,
+  MAX_IMAGES_PER_NOTE,
   pdfTooLargeMessage,
+  imageTooLargeMessage,
+  imagesTotalTooLargeMessage,
 } = require("./uploadLimits");
 const {
   isCloudinaryConfigured,
@@ -41,9 +46,53 @@ function hashBuffer(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-function buildStoredName(originalName, contentHash) {
+function extensionForNoteMime(mimeType) {
+  const mime = String(mimeType || "").toLowerCase();
+  if (mime === "application/pdf") return ".pdf";
+  if (mime === "image/png") return ".png";
+  if (mime === "image/jpeg" || mime === "image/jpg") return ".jpg";
+  if (mime === "image/webp") return ".webp";
+  return ".bin";
+}
+
+function buildStoredName(originalName, contentHash, mimeType = "application/pdf") {
   const base = sanitizeSegment(path.parse(originalName || "lecture").name);
-  return `${Date.now()}-${contentHash.slice(0, 12)}-${base}.pdf`;
+  return `${Date.now()}-${contentHash.slice(0, 12)}-${base}${extensionForNoteMime(mimeType)}`;
+}
+
+const NOTE_ALLOWED_MIMES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+
+function validateNoteFileSize(buffer, mimeType) {
+  const isPdf = String(mimeType || "").toLowerCase() === "application/pdf";
+  const max = isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    const error = new Error("File content is empty.");
+    error.code = "EMPTY_FILE";
+    throw error;
+  }
+  if (buffer.length > max) {
+    const error = new Error(isPdf ? pdfTooLargeMessage() : imageTooLargeMessage());
+    error.code = "LIMIT_FILE_SIZE";
+    throw error;
+  }
+}
+
+function validateImagesTotalSize(buffers) {
+  const total = (Array.isArray(buffers) ? buffers : []).reduce(
+    (sum, buffer) => sum + (Buffer.isBuffer(buffer) ? buffer.length : 0),
+    0
+  );
+  if (total > MAX_IMAGES_TOTAL_BYTES) {
+    const error = new Error(imagesTotalTooLargeMessage());
+    error.code = "LIMIT_FILE_SIZE";
+    throw error;
+  }
 }
 
 /**
@@ -51,24 +100,25 @@ function buildStoredName(originalName, contentHash) {
  * Legacy local disk paths remain readable via readStoredPdf / openStoredReadStream.
  * Returns cloudinary: storagePath — never a public URL.
  */
-async function savePdfBuffer({
+async function saveNoteFile({
   buffer,
   level,
   courseCode,
   originalName,
+  mimeType = "application/pdf",
   folderKind = "notes",
   ownerSegment = null,
 }) {
-  if (!Buffer.isBuffer(buffer) || !buffer.length) {
-    const error = new Error("PDF content is empty.");
-    error.code = "EMPTY_PDF";
+  const normalizedMime = String(mimeType || "").toLowerCase();
+  if (!NOTE_ALLOWED_MIMES.has(normalizedMime)) {
+    const error = new Error(
+      "Only PDF, JPG, JPEG, PNG, and WEBP files are allowed."
+    );
+    error.code = "INVALID_MIME";
     throw error;
   }
-  if (buffer.length > MAX_PDF_BYTES) {
-    const error = new Error(pdfTooLargeMessage());
-    error.code = "LIMIT_FILE_SIZE";
-    throw error;
-  }
+
+  validateNoteFileSize(buffer, normalizedMime);
 
   if (!isCloudinaryConfigured()) {
     const error = new Error(
@@ -79,7 +129,7 @@ async function savePdfBuffer({
   }
 
   const contentHash = hashBuffer(buffer);
-  const storedName = buildStoredName(originalName, contentHash);
+  const storedName = buildStoredName(originalName, contentHash, normalizedMime);
   const levelSeg = sanitizeSegment(level);
   const courseSeg = sanitizeSegment(courseCode).toUpperCase();
 
@@ -92,7 +142,7 @@ async function savePdfBuffer({
 
   const uploaded = await uploadBuffer({
     buffer,
-    mimeType: "application/pdf",
+    mimeType: normalizedMime,
     folderParts,
     storedName,
     originalName,
@@ -104,8 +154,31 @@ async function savePdfBuffer({
     storagePath: uploaded.storagePath,
     absolutePath: null,
     size: uploaded.bytes || buffer.length,
+    mimeType: normalizedMime,
+    originalName: originalName || storedName,
     storageProvider: "cloudinary",
   };
+}
+
+async function savePdfBuffer(options) {
+  return saveNoteFile({
+    ...options,
+    mimeType: "application/pdf",
+  });
+}
+
+function allNoteStoragePaths(note) {
+  const paths = [];
+  if (note?.storagePath) paths.push(note.storagePath);
+  for (const file of note?.files || []) {
+    if (file?.storagePath) paths.push(file.storagePath);
+  }
+  return [...new Set(paths)];
+}
+
+async function deleteStoredNoteFilesForNote(note) {
+  const paths = allNoteStoragePaths(note);
+  await Promise.all(paths.map((storagePath) => deleteStoredNoteFile(storagePath)));
 }
 
 function resolveStoredPath(storagePath) {
@@ -177,14 +250,22 @@ async function deleteStoredNoteFile(storagePath) {
 
 module.exports = {
   MAX_PDF_BYTES,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_TOTAL_BYTES,
+  MAX_IMAGES_PER_NOTE,
+  NOTE_ALLOWED_MIMES,
   getUploadsRoot,
   getNotesRoot,
   hashBuffer,
   savePdfBuffer,
+  saveNoteFile,
+  validateImagesTotalSize,
   readStoredPdf,
   createReadStream,
   openStoredReadStream,
   resolveStoredPath,
   deleteStoredNoteFile,
+  allNoteStoragePaths,
+  deleteStoredNoteFilesForNote,
   isCloudinaryStoragePath,
 };

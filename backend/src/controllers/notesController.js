@@ -1,4 +1,3 @@
-const multer = require("multer");
 const NoteResource = require("../models/NoteResource");
 const { findCourseForStudent } = require("../data/coursesByLevel");
 const {
@@ -7,77 +6,26 @@ const {
   studentCanDeleteNote,
 } = require("../utils/noteAccess");
 const {
-  MAX_PDF_BYTES,
-  hashBuffer,
-  savePdfBuffer,
-  openStoredReadStream,
   deleteStoredNoteFile,
+  deleteStoredNoteFilesForNote,
+  openStoredReadStream,
 } = require("../utils/noteStorage");
-const { pdfTooLargeMessage } = require("../utils/uploadLimits");
+const {
+  runNotesUpload,
+  handleNotesUploadError,
+  collectNoteUploads,
+  combinedContentHash,
+  persistNotePages,
+  defaultNoteTitle,
+  findDuplicateNote,
+  resolveNotePages,
+} = require("../utils/notesUpload");
 const {
   logMaterialViewIfNeeded,
   logMaterialDownloadIfNeeded,
   logCourseAccessIfNeeded,
   recordPersonalUpload,
 } = require("../utils/activityTracker");
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PDF_BYTES, files: 1 },
-  fileFilter(req, file, cb) {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-      return;
-    }
-    cb(new Error("Only PDF files are allowed."));
-  },
-});
-
-const pdfUpload = upload.single("pdf");
-
-function runPdfUpload(req, res) {
-  return new Promise((resolve, reject) => {
-    pdfUpload(req, res, (error) => {
-      if (error) reject(error);
-      else resolve();
-    });
-  });
-}
-
-function handleUploadError(error, res) {
-  if (error instanceof multer.MulterError) {
-    if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({
-        success: false,
-        message: pdfTooLargeMessage(),
-      });
-    }
-    return res.status(400).json({
-      success: false,
-      message: "Could not read the uploaded PDF. Please try again.",
-    });
-  }
-
-  if (error && error.message === "Only PDF files are allowed.") {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-
-  if (error?.code === "LIMIT_FILE_SIZE" || error?.code === "EMPTY_PDF") {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-
-  console.error("Notes upload error:", error);
-  return res.status(500).json({
-    success: false,
-    message: "Could not save the PDF. Please try again.",
-  });
-}
 
 /**
  * GET /api/notes?library=official|personal&courseCode=&q=
@@ -159,7 +107,7 @@ async function listNotes(req, res) {
  */
 async function uploadNote(req, res) {
   try {
-    await runPdfUpload(req, res);
+    await runNotesUpload(req, res);
 
     const student = req.student;
     const courseCode = String(req.body?.courseCode || "").trim();
@@ -169,7 +117,7 @@ async function uploadNote(req, res) {
     if (!courseCode) {
       return res.status(400).json({
         success: false,
-        message: "Select a course before uploading a PDF.",
+        message: "Select a course before uploading.",
       });
     }
 
@@ -182,15 +130,16 @@ async function uploadNote(req, res) {
       });
     }
 
-    if (!req.file?.buffer?.length) {
+    const { format, files } = collectNoteUploads(req);
+    if (!files.length) {
       return res.status(400).json({
         success: false,
-        message: "Please choose a PDF file to upload.",
+        message: "Please choose a PDF or one or more images to upload.",
       });
     }
 
-    const contentHash = hashBuffer(req.file.buffer);
-    const existing = await NoteResource.findOne({
+    const contentHash = combinedContentHash(files.map((file) => file.buffer));
+    const existing = await findDuplicateNote({
       level: student.level,
       courseCode: course.code,
       contentHash,
@@ -202,39 +151,41 @@ async function uploadNote(req, res) {
       return res.status(200).json({
         success: true,
         duplicated: true,
-        message: "This PDF is already in your personal library.",
+        message: "This note is already in your personal library.",
         note: existing.toPublicObject(),
       });
     }
 
-    const saved = await savePdfBuffer({
-      buffer: req.file.buffer,
+    const savedFiles = await persistNotePages({
+      files,
+      format,
       level: student.level,
       courseCode: course.code,
-      originalName: req.file.originalname,
       folderKind: "notes/personal",
       ownerSegment: student._id.toString(),
     });
 
-    const title =
-      titleInput ||
-      String(req.file.originalname || "Lecture notes")
-        .replace(/\.pdf$/i, "")
-        .trim()
-        .slice(0, 160) ||
-      `${course.code} lecture notes`;
+    const first = savedFiles[0];
+    const title = defaultNoteTitle({
+      titleInput,
+      files,
+      format,
+      courseCode: course.code,
+    });
 
     let note;
     try {
       note = await NoteResource.create({
         title,
         description: description.slice(0, 500) || "Personal upload",
-        originalName: req.file.originalname || saved.storedName,
-        storedName: saved.storedName,
-        storagePath: saved.storagePath,
-        mimeType: req.file.mimetype || "application/pdf",
-        size: saved.size,
-        contentHash: saved.contentHash,
+        originalName: first.originalName,
+        storedName: first.storedName,
+        storagePath: first.storagePath,
+        mimeType: first.mimeType,
+        size: savedFiles.reduce((sum, file) => sum + file.size, 0),
+        contentHash,
+        format,
+        files: savedFiles,
         level: student.level,
         courseCode: course.code,
         courseTitle: course.title,
@@ -243,7 +194,9 @@ async function uploadNote(req, res) {
         uploadedBy: student._id,
       });
     } catch (createError) {
-      await deleteStoredNoteFile(saved.storagePath);
+      await Promise.all(
+        savedFiles.map((file) => deleteStoredNoteFile(file.storagePath))
+      );
       throw createError;
     }
 
@@ -252,28 +205,23 @@ async function uploadNote(req, res) {
     return res.status(201).json({
       success: true,
       duplicated: false,
-      message: "PDF saved to My Personal Uploads.",
+      message:
+        format === "images"
+          ? `Saved ${savedFiles.length} pages to My Personal Uploads.`
+          : "PDF saved to My Personal Uploads.",
       note: note.toPublicObject(),
     });
   } catch (error) {
-    if (error?.code === "CLOUDINARY_NOT_CONFIGURED" || error?.code === "CLOUDINARY_UPLOAD_FAILED") {
-      console.error(
-        `[notes] upload storage error code=${error.code} http=${error.http_code || "n/a"} message=${String(error.message || "").slice(0, 300)}`
-      );
-      return res.status(503).json({
-        success: false,
-        message: "File storage is temporarily unavailable. Please try again later.",
-      });
-    }
     if (error?.code === 11000) {
       try {
         const courseCode = String(req.body?.courseCode || "").trim();
         const course = findCourseForStudent(req.student.level, courseCode);
-        const contentHash = req.file?.buffer
-          ? hashBuffer(req.file.buffer)
+        const { files } = collectNoteUploads(req);
+        const contentHash = files.length
+          ? combinedContentHash(files.map((file) => file.buffer))
           : null;
         if (course && contentHash) {
-          const existing = await NoteResource.findOne({
+          const existing = await findDuplicateNote({
             level: req.student.level,
             courseCode: course.code,
             contentHash,
@@ -284,7 +232,7 @@ async function uploadNote(req, res) {
             return res.status(200).json({
               success: true,
               duplicated: true,
-              message: "This PDF is already in your personal library.",
+              message: "This note is already in your personal library.",
               note: existing.toPublicObject(),
             });
           }
@@ -293,7 +241,7 @@ async function uploadNote(req, res) {
         /* fall through */
       }
     }
-    return handleUploadError(error, res);
+    return handleNotesUploadError(error, res, "Could not save the note. Please try again.");
   }
 }
 
@@ -303,7 +251,7 @@ async function getNote(req, res) {
     if (!note) {
       return res.status(404).json({
         success: false,
-        message: "PDF not found.",
+        message: "Note not found.",
       });
     }
     if (!studentCanAccessNote(note, req.student)) {
@@ -325,51 +273,85 @@ async function getNote(req, res) {
   }
 }
 
+async function streamNotePage(req, res, fileIndex) {
+  const note = await NoteResource.findById(req.params.id);
+  if (!note) {
+    return res.status(404).json({
+      success: false,
+      message: "Note not found.",
+    });
+  }
+  if (!studentCanAccessNote(note, req.student)) {
+    return res.status(403).json({
+      success: false,
+      message: "You do not have access to this material.",
+    });
+  }
+
+  const pages = resolveNotePages(note);
+  const page = pages[fileIndex];
+  if (!page?.storagePath) {
+    return res.status(404).json({
+      success: false,
+      message: "That page was not found.",
+    });
+  }
+
+  await logMaterialDownloadIfNeeded(req.student, note);
+
+  const filename = page.originalName || note.originalName || "notes";
+  res.setHeader("Content-Type", page.mimeType || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${encodeURIComponent(filename)}"`
+  );
+  if (page.size) {
+    res.setHeader("Content-Length", String(page.size));
+  }
+
+  const stream = await openStoredReadStream(page.storagePath);
+  stream.on("error", (err) => {
+    console.error("Note stream error:", err.message);
+    if (!res.headersSent) {
+      res.status(404).json({
+        success: false,
+        message: "File is missing on the server.",
+      });
+    } else {
+      res.end();
+    }
+  });
+  stream.pipe(res);
+  return undefined;
+}
+
 async function downloadNoteFile(req, res) {
   try {
-    const note = await NoteResource.findById(req.params.id);
-    if (!note) {
-      return res.status(404).json({
-        success: false,
-        message: "PDF not found.",
-      });
-    }
-    if (!studentCanAccessNote(note, req.student)) {
-      return res.status(403).json({
-        success: false,
-        message: "You do not have access to this material.",
-      });
-    }
-
-    await logMaterialDownloadIfNeeded(req.student, note);
-
-    res.setHeader("Content-Type", note.mimeType || "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${encodeURIComponent(note.originalName || "notes.pdf")}"`
-    );
-    if (note.size) {
-      res.setHeader("Content-Length", String(note.size));
-    }
-
-    const stream = await openStoredReadStream(note.storagePath);
-    stream.on("error", (err) => {
-      console.error("PDF stream error:", err.message);
-      if (!res.headersSent) {
-        res.status(404).json({
-          success: false,
-          message: "PDF file is missing on the server.",
-        });
-      } else {
-        res.end();
-      }
-    });
-    stream.pipe(res);
+    return await streamNotePage(req, res, 0);
   } catch (error) {
     console.error("Download note error:", error);
     return res.status(500).json({
       success: false,
-      message: "Could not download that PDF.",
+      message: "Could not download that file.",
+    });
+  }
+}
+
+async function downloadNotePageFile(req, res) {
+  try {
+    const fileIndex = parseInt(String(req.params.fileIndex || "0"), 10);
+    if (!Number.isFinite(fileIndex) || fileIndex < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid page number.",
+      });
+    }
+    return await streamNotePage(req, res, fileIndex);
+  } catch (error) {
+    console.error("Download note page error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Could not open that page.",
     });
   }
 }
@@ -383,7 +365,7 @@ async function deleteNote(req, res) {
     if (!note) {
       return res.status(404).json({
         success: false,
-        message: "PDF not found.",
+        message: "Note not found.",
       });
     }
     if (!studentCanDeleteNote(note, req.student)) {
@@ -393,9 +375,8 @@ async function deleteNote(req, res) {
       });
     }
 
-    const storagePath = note.storagePath;
     await note.deleteOne();
-    await deleteStoredNoteFile(storagePath);
+    await deleteStoredNoteFilesForNote(note);
 
     return res.status(200).json({
       success: true,
@@ -416,5 +397,6 @@ module.exports = {
   uploadNote,
   getNote,
   downloadNoteFile,
+  downloadNotePageFile,
   deleteNote,
 };

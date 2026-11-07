@@ -1,4 +1,5 @@
 import { apiFetch, getApiBaseUrl, getToken } from "./api";
+import { uploadFormWithProgress } from "./uploadFormWithProgress";
 
 /**
  * Notes & Resources API helpers (level-gated on the backend).
@@ -25,6 +26,11 @@ export function formatNoteDate(value) {
   }
 }
 
+export function noteFormatLabel(note) {
+  if (note?.format === "images" || note?.fileType === "Images") return "Images";
+  return "PDF";
+}
+
 export async function listNotes({
   library = "official",
   courseCode = "",
@@ -43,15 +49,37 @@ export async function getNote(noteId) {
 
 export async function uploadNote({
   file,
+  files,
   courseCode,
   title = "",
   description = "",
+  onProgress,
 }) {
   const form = new FormData();
-  form.append("pdf", file);
   form.append("courseCode", courseCode);
   if (title) form.append("title", title);
   if (description) form.append("description", description);
+
+  const imageFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (imageFiles.length) {
+    imageFiles.forEach((item) => form.append("images", item));
+  } else if (file) {
+    form.append("pdf", file);
+  }
+
+  if (typeof onProgress === "function") {
+    return uploadFormWithProgress({
+      url: `${getApiBaseUrl()}/api/notes`,
+      method: "POST",
+      form,
+      credentials: "same-origin",
+      headers: {
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      onProgress,
+    });
+  }
+
   return apiFetch("/api/notes", {
     method: "POST",
     body: form,
@@ -64,9 +92,16 @@ export async function deleteNote(noteId) {
   });
 }
 
-export async function fetchNoteFileBlob(noteId) {
+export function notePageFileUrl(noteId, fileIndex = 0) {
+  return `${getApiBaseUrl()}/api/notes/${noteId}/files/${fileIndex}/file`;
+}
+
+export async function fetchNotePageBlob(noteId, fileIndex = 0) {
   const token = getToken();
-  const url = `${getApiBaseUrl()}/api/notes/${noteId}/file`;
+  const url =
+    fileIndex > 0
+      ? notePageFileUrl(noteId, fileIndex)
+      : `${getApiBaseUrl()}/api/notes/${noteId}/file`;
   const response = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -85,8 +120,25 @@ export async function fetchNoteFileBlob(noteId) {
   return response.blob();
 }
 
-export async function downloadNoteFile(noteId, filename = "notes.pdf") {
-  const blob = await fetchNoteFileBlob(noteId);
+export async function fetchNoteFileBlob(noteId) {
+  return fetchNotePageBlob(noteId, 0);
+}
+
+export async function fetchNotePreviewUrls(note) {
+  const count = Math.max(
+    1,
+    Number(note?.pageCount) ||
+      (Array.isArray(note?.files) ? note.files.length : 1)
+  );
+  const urls = [];
+  for (let index = 0; index < count; index += 1) {
+    const blob = await fetchNotePageBlob(note.id, index);
+    urls.push(URL.createObjectURL(blob));
+  }
+  return urls;
+}
+
+function triggerDownload(blob, filename) {
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
@@ -95,4 +147,29 @@ export async function downloadNoteFile(noteId, filename = "notes.pdf") {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadNoteFile(noteId, filename = "notes.pdf") {
+  const blob = await fetchNoteFileBlob(noteId);
+  triggerDownload(blob, filename);
+}
+
+export async function downloadNote(note) {
+  const pages = Array.isArray(note?.files) && note.files.length
+    ? note.files
+    : [{ originalName: note?.originalName, index: 0 }];
+  const isImages = note?.format === "images" || pages.length > 1;
+
+  if (!isImages) {
+    await downloadNoteFile(note.id, note.originalName || "notes.pdf");
+    return;
+  }
+
+  for (let index = 0; index < pages.length; index += 1) {
+    const blob = await fetchNotePageBlob(note.id, index);
+    triggerDownload(
+      blob,
+      pages[index]?.originalName || `page-${index + 1}.jpg`
+    );
+  }
 }

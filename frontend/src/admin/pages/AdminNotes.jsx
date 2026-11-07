@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { adminFetch } from "../../utils/adminApi";
-import { validatePdfFile } from "../../utils/uploadLimits";
+import NoteUploadComposer from "../../components/notes/NoteUploadComposer";
+import { adminFetch, uploadAdminNote } from "../../utils/adminApi";
+import { formatBytes } from "../../utils/notesApi";
 import { useAdminLevel } from "../AdminLevelContext";
-
-function formatBytes(bytes) {
-  const size = Number(bytes) || 0;
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function AdminNotes() {
   const { isSuperAdmin, assignedLevel, levels } = useAdminLevel();
@@ -16,13 +10,13 @@ function AdminNotes() {
   const [courseCode, setCourseCode] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [file, setFile] = useState(null);
   const [courses, setCourses] = useState([]);
   const [notes, setNotes] = useState([]);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -75,46 +69,39 @@ function AdminNotes() {
 
   const courseOptions = useMemo(() => courses, [courses]);
 
-  const handleUpload = async (event) => {
-    event.preventDefault();
+  const handleUpload = async ({ format, pdfFile, imageFiles, title: noteTitle, description: noteDescription }) => {
     setStatus("");
     setError("");
-    if (!file) {
-      setError("Choose a PDF to upload.");
-      return;
-    }
-    const sizeError = validatePdfFile(file);
-    if (sizeError) {
-      setError(sizeError);
-      return;
-    }
     if (!courseCode) {
       setError("Select a course.");
-      return;
+      throw new Error("Select a course.");
     }
 
     setUploading(true);
+    setProgress(0);
     try {
       const form = new FormData();
-      form.append("pdf", file);
       form.append("level", level);
       form.append("courseCode", courseCode);
-      if (title.trim()) form.append("title", title.trim());
-      if (description.trim()) form.append("description", description.trim());
+      if (noteTitle?.trim()) form.append("title", noteTitle.trim());
+      if (noteDescription?.trim()) form.append("description", noteDescription.trim());
+      if (format === "images") {
+        imageFiles.forEach((file) => form.append("images", file));
+      } else if (pdfFile) {
+        form.append("pdf", pdfFile);
+      }
 
-      const data = await adminFetch("/api/admin/notes", {
-        method: "POST",
-        body: form,
-      });
+      const data = await uploadAdminNote(form, { onProgress: setProgress });
       setStatus(data.message || "Uploaded.");
-      setFile(null);
       setTitle("");
       setDescription("");
       await loadNotes();
     } catch (err) {
       setError(err.message || "Upload failed.");
+      throw err;
     } finally {
       setUploading(false);
+      setProgress(0);
     }
   };
 
@@ -124,97 +111,71 @@ function AdminNotes() {
         <h1>Upload Notes & Resources</h1>
         <p>
           {isSuperAdmin
-            ? "Publish lecture PDFs for any academic level. Students only see materials for their own level."
-            : `Publish lecture PDFs for ${assignedLevel || level} Level only.`}
+            ? "Publish a PDF or several images as one note for any academic level. Students only see materials for their own level."
+            : `Publish a PDF or several images as one note for ${assignedLevel || level} Level only.`}
         </p>
       </header>
 
       <div className="admin-panel">
-        <h2>Upload PDF</h2>
-        <form onSubmit={handleUpload}>
-          {error ? <p className="admin-form-error">{error}</p> : null}
-          {status ? <p className="admin-form-success">{status}</p> : null}
+        <h2>Upload official note</h2>
+        {error ? <p className="admin-form-error">{error}</p> : null}
+        {status ? <p className="admin-form-success">{status}</p> : null}
 
-          <div className="admin-toolbar">
-            <div className="admin-field" style={{ maxWidth: 140 }}>
-              <label htmlFor="note-level">Level</label>
-              {isSuperAdmin ? (
+        <NoteUploadComposer
+          idPrefix="admin-note"
+          uploading={uploading}
+          progress={progress}
+          title={title}
+          onTitleChange={setTitle}
+          description={description}
+          onDescriptionChange={setDescription}
+          submitLabel="Upload to library"
+          onSubmit={handleUpload}
+          extraFields={
+            <div className="admin-toolbar">
+              <div className="admin-field" style={{ maxWidth: 140 }}>
+                <label htmlFor="note-level">Level</label>
+                {isSuperAdmin ? (
+                  <select
+                    id="note-level"
+                    value={level}
+                    onChange={(e) => setLevel(e.target.value)}
+                    disabled={uploading}
+                  >
+                    {levels.map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {lvl}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="note-level"
+                    value={`${level} Level`}
+                    disabled
+                    readOnly
+                  />
+                )}
+              </div>
+              <div className="admin-field">
+                <label htmlFor="note-course">Course</label>
                 <select
-                  id="note-level"
-                  value={level}
-                  onChange={(e) => setLevel(e.target.value)}
+                  id="note-course"
+                  value={courseCode}
+                  onChange={(e) => setCourseCode(e.target.value)}
+                  disabled={uploading}
                 >
-                  {levels.map((lvl) => (
-                    <option key={lvl} value={lvl}>
-                      {lvl}
+                  <option value="">Select course</option>
+                  {courseOptions.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code} — {c.title}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <input
-                  id="note-level"
-                  value={`${level} Level`}
-                  disabled
-                  readOnly
-                />
-              )}
+              </div>
             </div>
-            <div className="admin-field">
-              <label htmlFor="note-course">Course</label>
-              <select
-                id="note-course"
-                value={courseCode}
-                onChange={(e) => setCourseCode(e.target.value)}
-              >
-                <option value="">Select course</option>
-                {courseOptions.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="admin-toolbar">
-            <div className="admin-field">
-              <label htmlFor="note-title">Title (optional)</label>
-              <input
-                id="note-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Lecture title"
-              />
-            </div>
-            <div className="admin-field">
-              <label htmlFor="note-file">PDF file (max 25 MB)</label>
-              <input
-                id="note-file"
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-            </div>
-          </div>
-
-          <div className="admin-field" style={{ marginBottom: "0.85rem" }}>
-            <label htmlFor="note-desc">Description (optional)</label>
-            <textarea
-              id="note-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Short description for students"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="admin-btn admin-btn-primary"
-            disabled={uploading}
-          >
-            {uploading ? "Uploading…" : "Upload to library"}
-          </button>
-        </form>
+          }
+        />
       </div>
 
       <div className="admin-panel">
@@ -237,7 +198,7 @@ function AdminNotes() {
         {!loading && !notes.length ? (
           <div className="admin-empty">
             <strong>No notes for this filter</strong>
-            Upload a PDF above or clear search.
+            Upload a PDF or images above, or clear search.
           </div>
         ) : null}
 
@@ -257,7 +218,11 @@ function AdminNotes() {
                 {notes.map((n) => (
                   <tr key={n.id}>
                     <td>{n.title}</td>
-                    <td>{n.originalName}</td>
+                    <td>
+                      {n.fileType || "PDF"}
+                      {n.pageCount > 1 ? ` · ${n.pageCount} pages` : ""}
+                      {n.originalName ? ` · ${n.originalName}` : ""}
+                    </td>
                     <td>{n.courseCode}</td>
                     <td>
                       <span className="admin-badge">{n.level}</span>

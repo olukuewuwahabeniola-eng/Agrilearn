@@ -2,9 +2,23 @@ const mongoose = require("mongoose");
 const { ALLOWED_LEVELS } = require("./Student");
 const { resolveNoteSource } = require("../utils/noteAccess");
 
+const noteFileSchema = new mongoose.Schema(
+  {
+    originalName: { type: String, required: true, trim: true },
+    storedName: { type: String, required: true, trim: true },
+    storagePath: { type: String, required: true, trim: true },
+    mimeType: { type: String, required: true, trim: true },
+    size: { type: Number, required: true, min: 1 },
+    contentHash: { type: String, required: true },
+    pageOrder: { type: Number, default: 0, min: 0 },
+  },
+  { _id: true }
+);
+
 /**
- * Lecture PDFs — official (admin) vs personal (student-owned).
- * Files on disk; metadata and privacy enforced here.
+ * Lecture notes — official (admin) vs personal (student-owned).
+ * Legacy records are a single PDF on storagePath.
+ * New records may be one PDF or several image pages in `files`.
  */
 const noteResourceSchema = new mongoose.Schema(
   {
@@ -49,6 +63,16 @@ const noteResourceSchema = new mongoose.Schema(
       type: String,
       required: true,
       index: true,
+    },
+    format: {
+      type: String,
+      enum: ["pdf", "images"],
+      default: "pdf",
+      index: true,
+    },
+    files: {
+      type: [noteFileSchema],
+      default: undefined,
     },
     level: {
       type: String,
@@ -112,6 +136,22 @@ noteResourceSchema.index(
 
 noteResourceSchema.methods.toPublicObject = function toPublicObject() {
   const source = resolveNoteSource(this);
+  const pages = Array.isArray(this.files) && this.files.length
+    ? [...this.files].sort((a, b) => (a.pageOrder ?? 0) - (b.pageOrder ?? 0))
+    : [
+        {
+          originalName: this.originalName,
+          mimeType: this.mimeType,
+          size: this.size,
+          pageOrder: 0,
+        },
+      ];
+  const format =
+    this.format ||
+    (pages.length > 1 || String(this.mimeType || "").startsWith("image/")
+      ? "images"
+      : "pdf");
+
   return {
     id: this._id.toString(),
     title: this.title,
@@ -119,6 +159,17 @@ noteResourceSchema.methods.toPublicObject = function toPublicObject() {
     originalName: this.originalName,
     mimeType: this.mimeType,
     size: this.size,
+    format,
+    fileType: format === "images" ? "Images" : "PDF",
+    pageCount: pages.length,
+    files: pages.map((file, index) => ({
+      id: file._id ? file._id.toString() : `${index}`,
+      index,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      size: file.size,
+      pageOrder: file.pageOrder ?? index,
+    })),
     level: this.level,
     courseCode: this.courseCode,
     courseTitle: this.courseTitle,

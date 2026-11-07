@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import NoteUploadComposer from "../../components/notes/NoteUploadComposer";
+import NoteViewer from "../../components/notes/NoteViewer";
 import {
   deleteNote,
-  downloadNoteFile,
+  downloadNote,
+  fetchNotePreviewUrls,
   formatBytes,
   formatNoteDate,
   listNotes,
+  noteFormatLabel,
   uploadNote,
 } from "../../utils/notesApi";
-import { validatePdfFile } from "../../utils/uploadLimits";
 import PageHeader from "../components/PageHeader";
 import { useDashboardBase } from "../hooks/useDashboardBase";
 import { useLevelCourses } from "../hooks/useLevelCourses";
@@ -19,11 +22,16 @@ function Notes() {
   const [library, setLibrary] = useState("official");
   const [course, setCourse] = useState("");
   const [search, setSearch] = useState("");
+  const [title, setTitle] = useState("");
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [previewUrls, setPreviewUrls] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const isPersonal = library === "personal";
 
@@ -53,52 +61,79 @@ function Notes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [library, course, search]);
 
+  useEffect(() => {
+    return () => {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [previewUrls]);
+
   const courseLabel = useMemo(() => {
     if (!course) return `${level} Level — all courses`;
     const match = courses.find((item) => item.code === course);
     return match ? `${match.code} — ${match.title}` : course;
   }, [course, courses, level]);
 
-  const handleUpload = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!course) {
-      setStatus("Select a course before uploading a PDF.");
-      return;
+  const closePreview = () => {
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
+    setPreview(null);
+  };
+
+  const openPreview = async (note) => {
+    setPreview(note);
+    setPreviewLoading(true);
+    setStatus("");
+    previewUrls.forEach((url) => URL.revokeObjectURL(url));
+    setPreviewUrls([]);
+    try {
+      const urls = await fetchNotePreviewUrls(note);
+      setPreviewUrls(urls);
+    } catch (err) {
+      setStatus(err.message || "Could not open that note.");
+      setPreview(null);
+    } finally {
+      setPreviewLoading(false);
     }
-    const sizeError = validatePdfFile(file);
-    if (sizeError) {
-      setStatus(sizeError);
-      return;
+  };
+
+  const handleUpload = async ({ format, pdfFile, imageFiles, title: noteTitle }) => {
+    if (!course) {
+      setStatus("Select a course before uploading.");
+      throw new Error("Select a course before uploading.");
     }
 
     setUploading(true);
+    setProgress(0);
     setStatus("");
     try {
       const data = await uploadNote({
-        file,
+        file: format === "pdf" ? pdfFile : undefined,
+        files: format === "images" ? imageFiles : undefined,
         courseCode: course,
-        title: file.name.replace(/\.pdf$/i, ""),
+        title: noteTitle?.trim() || undefined,
         description: "Personal upload",
+        onProgress: setProgress,
       });
       setStatus(
         data.duplicated
-          ? "That PDF is already in My Personal Uploads."
-          : "PDF saved to My Personal Uploads."
+          ? "That note is already in My Personal Uploads."
+          : data.message || "Saved to My Personal Uploads."
       );
+      setTitle("");
       setLibrary("personal");
       await loadNotes();
     } catch (err) {
       setStatus(err.message || "Upload failed.");
+      throw err;
     } finally {
       setUploading(false);
+      setProgress(0);
     }
   };
 
   const handleDownload = async (note) => {
     try {
-      await downloadNoteFile(note.id, note.originalName || "notes.pdf");
+      await downloadNote(note);
     } catch (err) {
       setStatus(err.message || "Download failed.");
     }
@@ -112,6 +147,7 @@ function Notes() {
     try {
       await deleteNote(note.id);
       setStatus("Personal upload deleted.");
+      if (preview?.id === note.id) closePreview();
       await loadNotes();
     } catch (err) {
       setStatus(err.message || "Delete failed.");
@@ -181,23 +217,26 @@ function Notes() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-
-        {isPersonal ? (
-          <div className="notes-upload">
-            <label htmlFor="notes-upload" className="btn btn-outline">
-              {uploading ? "Uploading…" : "Upload PDF"}
-            </label>
-            <input
-              id="notes-upload"
-              type="file"
-              accept="application/pdf"
-              hidden
-              disabled={uploading}
-              onChange={handleUpload}
-            />
-          </div>
-        ) : null}
       </div>
+
+      {isPersonal ? (
+        <div className="notes-personal-upload">
+          <h2>Upload a personal note</h2>
+          <p className="note-composer-hint">
+            PDFs and photo pages stay private to you. They never appear in
+            General Materials. Select a course above first.
+          </p>
+          <NoteUploadComposer
+            idPrefix="personal-note"
+            uploading={uploading}
+            progress={progress}
+            title={title}
+            onTitleChange={setTitle}
+            submitLabel="Save to My Personal Uploads"
+            onSubmit={handleUpload}
+          />
+        </div>
+      ) : null}
 
       <p className="notes-context">
         {isPersonal ? "My Personal Uploads" : "General Materials (Official)"} ·{" "}
@@ -225,8 +264,8 @@ function Notes() {
         <div className="empty-state" style={{ marginTop: "1.25rem" }}>
           <strong>No {isPersonal ? "personal uploads" : "official materials"} yet</strong>
           {isPersonal
-            ? "Upload a PDF for a course — only you can see it here."
-            : "Official PDFs appear when administrators publish them for your level."}
+            ? "Upload a PDF or several images as one note — only you can see it here."
+            : "Official notes appear when administrators publish them for your level."}
         </div>
       ) : (
         <ul className="notes-grid">
@@ -242,7 +281,8 @@ function Notes() {
               </div>
               <h3>{note.title}</h3>
               <p className="notes-filename">
-                {note.originalName} · {note.mimeType?.includes("pdf") ? "PDF" : "Document"}
+                {note.originalName} · {noteFormatLabel(note)}
+                {note.pageCount > 1 ? ` · ${note.pageCount} pages` : ""}
               </p>
               <p className="notes-desc muted">
                 {note.courseCode} — {note.courseTitle}
@@ -259,6 +299,13 @@ function Notes() {
                   >
                     Use with AI
                   </Link>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => openPreview(note)}
+                  >
+                    View
+                  </button>
                   <button
                     type="button"
                     className="link-btn"
@@ -281,6 +328,14 @@ function Notes() {
           ))}
         </ul>
       )}
+
+      <NoteViewer
+        note={preview}
+        urls={previewUrls}
+        loading={previewLoading}
+        onClose={closePreview}
+        onDownload={() => preview && handleDownload(preview)}
+      />
     </section>
   );
 }
