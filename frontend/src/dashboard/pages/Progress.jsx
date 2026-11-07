@@ -138,7 +138,9 @@ function Progress() {
         </div>
       ) : (
         <div className="progress-course-list">
-          {(progress.courses || []).map((course) => (
+          {(progress.courses || [])
+            .filter((course) => (course.topics || []).length > 0)
+            .map((course) => (
             <div key={course.courseCode} className="progress-course-block">
               <div className="section-head">
                 <h2>
@@ -150,6 +152,11 @@ function Progress() {
                 <span className="admin-muted">
                   {course.progressPercent ?? 0}% · {course.completedTopics}/
                   {course.totalTopics}
+                  {course.quizzesCompleted
+                    ? ` · ${course.quizzesCompleted} ${
+                        course.quizzesCompleted === 1 ? "quiz" : "quizzes"
+                      }`
+                    : ""}
                 </span>
               </div>
               <div className="progress-track" style={{ marginBottom: "0.75rem" }}>

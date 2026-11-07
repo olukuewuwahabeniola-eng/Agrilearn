@@ -40,15 +40,35 @@ async function getOfficialNotesForStudent(student, courseCode = "") {
   });
 }
 
+async function countQuizzesByCourse(student, courseCode = "") {
+  const match = {
+    student: student._id,
+    status: "completed",
+  };
+  if (courseCode) {
+    match.courseCode = String(courseCode).trim().toUpperCase();
+  }
+
+  const rows = await QuizAttempt.aggregate([
+    { $match: match },
+    { $group: { _id: "$courseCode", count: { $sum: 1 } } },
+  ]);
+
+  return new Map(rows.map((row) => [String(row._id || "").toUpperCase(), row.count]));
+}
+
 async function buildProgressSnapshot(student, courseCode = "") {
   const notes = await getOfficialNotesForStudent(student, courseCode);
   const noteIds = notes.map((n) => n._id);
-  const completions = noteIds.length
-    ? await TopicCompletion.find({
-        student: student._id,
-        note: { $in: noteIds },
-      })
-    : [];
+  const [completions, quizByCourse] = await Promise.all([
+    noteIds.length
+      ? TopicCompletion.find({
+          student: student._id,
+          note: { $in: noteIds },
+        })
+      : Promise.resolve([]),
+    countQuizzesByCourse(student, courseCode),
+  ]);
   const completedSet = new Set(completions.map((c) => String(c.note)));
   const totalTopics = notes.length;
   const completedTopics = notes.filter((n) =>
@@ -57,7 +77,7 @@ async function buildProgressSnapshot(student, courseCode = "") {
 
   const byCourseMap = new Map();
   for (const note of notes) {
-    const code = note.courseCode;
+    const code = String(note.courseCode || "").toUpperCase();
     if (!byCourseMap.has(code)) {
       byCourseMap.set(code, {
         courseCode: code,
@@ -81,14 +101,33 @@ async function buildProgressSnapshot(student, courseCode = "") {
     });
   }
 
+  for (const [code] of quizByCourse) {
+    if (!code || byCourseMap.has(code)) continue;
+    const catalog = findCourseForStudent(student.level, code);
+    byCourseMap.set(code, {
+      courseCode: code,
+      courseTitle: catalog?.title || "",
+      totalTopics: 0,
+      completedTopics: 0,
+      topics: [],
+    });
+  }
+
   const courses = [...byCourseMap.values()].map((row) => ({
     ...row,
+    quizzesCompleted: quizByCourse.get(row.courseCode) || 0,
     progressPercent: percent(row.completedTopics, row.totalTopics),
   }));
+
+  const quizzesCompleted = [...quizByCourse.values()].reduce(
+    (sum, count) => sum + count,
+    0
+  );
 
   return {
     totalTopics,
     completedTopics,
+    quizzesCompleted,
     progressPercent: percent(completedTopics, totalTopics),
     hasTopics: totalTopics > 0,
     courses,

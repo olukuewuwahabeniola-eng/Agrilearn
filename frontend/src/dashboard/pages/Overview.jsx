@@ -9,6 +9,10 @@ import CourseCard from "../components/CourseCard";
 import { getFirstName } from "../data/courses";
 import { useDashboardBase } from "../hooks/useDashboardBase";
 import { useLevelCourses } from "../hooks/useLevelCourses";
+import {
+  applyCourseProgress,
+  indexProgressCourses,
+} from "../utils/courseProgress";
 
 const BANNER_IMAGE =
   "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1400&q=80";
@@ -28,6 +32,7 @@ function Overview() {
     hasTopics: false,
   });
   const [recentUploads, setRecentUploads] = useState([]);
+  const [progressByCode, setProgressByCode] = useState({});
 
   const courseCount = courses.length;
 
@@ -50,6 +55,7 @@ function Overview() {
         setRecentUploads(
           Array.isArray(data.recentUploads) ? data.recentUploads : []
         );
+        setProgressByCode(indexProgressCourses(data.progress?.courses));
       } catch (err) {
         if (!cancelled) {
           setError(err.message || "Could not load dashboard statistics.");
@@ -182,7 +188,10 @@ function Overview() {
           {courses.map((course, index) => (
             <CourseCard
               key={course.code}
-              course={course}
+              course={applyCourseProgress(
+                course,
+                progressByCode[String(course.code).toUpperCase()]
+              )}
               style={{ animationDelay: `${0.05 * index}s` }}
             />
           ))}
