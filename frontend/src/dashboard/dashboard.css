@@ -515,6 +515,7 @@
 }
 
 .progress-course-block {
+  min-width: 0;
   border: 1px solid var(--dash-border);
   border-radius: 14px;
   padding: 0.9rem 1rem;
@@ -525,6 +526,9 @@
   font-weight: 500;
   color: var(--dash-muted);
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .topic-done-badge {
@@ -544,6 +548,7 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .help-card {
@@ -714,15 +719,20 @@
 
 .section-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
   margin-bottom: 0.85rem;
 }
 
 .section-head h2 {
   font-size: 1.15rem;
   font-weight: 800;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .section-head a,
@@ -739,12 +749,17 @@
 
 .courses-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.9rem;
   margin-bottom: 1.25rem;
+  align-items: stretch;
 }
 
 .course-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
   background: #fff;
   border: 1px solid var(--dash-border);
   border-radius: 16px;
@@ -793,6 +808,10 @@
 }
 
 .course-card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
   padding: 0.85rem 0.9rem 1rem;
 }
 
@@ -801,6 +820,8 @@
   font-weight: 800;
   color: var(--dash-text);
   letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .course-card-body .title {
@@ -809,15 +830,18 @@
   color: var(--dash-muted);
   margin: 0.3rem 0 0.75rem;
   min-height: 2.8em;
+  overflow: visible;
   overflow-wrap: anywhere;
   word-break: break-word;
+  white-space: normal;
+  text-overflow: unset;
 }
 
 .course-open-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: auto;
   width: 100%;
   padding: 0.55rem 0.8rem;
   border-radius: 999px;
@@ -931,6 +955,20 @@
   align-items: flex-start;
   gap: 0.85rem;
   margin-bottom: 1rem;
+}
+
+.dash-page-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.dash-page-header h1,
+.dash-page-header p,
+.page-hero h1,
+.page-hero p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .dash-page-header h1 {
@@ -1498,6 +1536,7 @@
 .notes-filters {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 0.35rem;
 }
 
@@ -1525,6 +1564,8 @@
   margin: 0.85rem 0 0;
   font-size: 0.88rem;
   color: var(--dash-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .notes-context a {
@@ -1552,11 +1593,12 @@
   margin: 1.15rem 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 0.9rem;
 }
 
 .notes-card {
+  min-width: 0;
   background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
   border: 1px solid var(--dash-border);
   border-radius: 16px;
@@ -1686,6 +1728,9 @@
   font-weight: 800;
   color: var(--dash-text);
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .notes-filename,
@@ -1694,6 +1739,9 @@
   font-size: 0.82rem;
   color: var(--dash-muted);
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .notes-desc.muted {
@@ -1705,7 +1753,8 @@
   padding-top: 0.65rem;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--dash-muted);
@@ -1736,10 +1785,17 @@
   border: 1px solid var(--dash-border);
 }
 
+.course-notes-list li > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
 .course-notes-list strong {
   display: block;
   font-size: 0.9rem;
   color: var(--dash-text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .course-notes-list span {
@@ -2127,7 +2183,7 @@
   }
 
   .courses-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2554,8 +2610,19 @@
   margin-bottom: 0.85rem;
 }
 
-.pq-preview-head h2 {
+.pq-preview-head > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.pq-preview-head h2,
+.pq-preview-head p {
   margin: 0 0 0.2rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.pq-preview-head h2 {
   font-size: 1.15rem;
 }
 

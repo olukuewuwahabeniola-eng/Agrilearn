@@ -2,15 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   downloadNoteFile,
+  fetchNoteFileBlob,
   formatBytes,
   formatNoteDate,
   listNotes,
 } from "../../utils/notesApi";
-import {
-  completeTopic,
-  getDashboardProgress,
-  recordCourseAccess,
-} from "../../utils/dashboardApi";
+import { recordCourseAccess } from "../../utils/dashboardApi";
 import PageHeader from "../components/PageHeader";
 import { useDashboardBase } from "../hooks/useDashboardBase";
 import { useLevelCourses } from "../hooks/useLevelCourses";
@@ -23,9 +20,9 @@ function CourseDetail() {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(true);
   const [notesError, setNotesError] = useState("");
-  const [courseProgress, setCourseProgress] = useState(null);
-  const [savingId, setSavingId] = useState("");
-  const [status, setStatus] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (!course?.code) return undefined;
@@ -38,18 +35,20 @@ function CourseDetail() {
     setNotesLoading(true);
     setNotesError("");
     try {
-      const [notesData, progressData] = await Promise.all([
-        listNotes({
-          library: "official",
-          courseCode: course.code,
-        }),
-        getDashboardProgress(course.code),
-      ]);
-      setNotes(Array.isArray(notesData.notes) ? notesData.notes : []);
-      setCourseProgress(progressData.progress || null);
+      const notesData = await listNotes({
+        library: "official",
+        courseCode: course.code,
+      });
+      const list = Array.isArray(notesData.notes) ? notesData.notes : [];
+      const courseCode = String(course.code).toUpperCase();
+      setNotes(
+        list.filter(
+          (note) => String(note.courseCode || "").toUpperCase() === courseCode
+        )
+      );
     } catch (error) {
       setNotes([]);
-      setNotesError(error.message || "Could not load notes.");
+      setNotesError(error.message || "Could not load PDF materials.");
     } finally {
       setNotesLoading(false);
     }
@@ -67,19 +66,32 @@ function CourseDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course?.code]);
 
-  const handleComplete = async (noteId) => {
-    setSavingId(noteId);
-    setStatus("");
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const closePreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    setPreview(null);
+  };
+
+  const openPreview = async (note) => {
+    setPreview(note);
+    setPreviewLoading(true);
+    setNotesError("");
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
     try {
-      const data = await completeTopic(noteId);
-      setCourseProgress(data.courseProgress || courseProgress);
-      setStatus(data.message || "Topic marked as completed.");
-      const refreshed = await getDashboardProgress(course.code);
-      if (refreshed.progress) setCourseProgress(refreshed.progress);
+      const blob = await fetchNoteFileBlob(note.id);
+      setPreviewUrl(URL.createObjectURL(blob));
     } catch (err) {
-      setNotesError(err.message || "Could not mark topic complete.");
+      setNotesError(err.message || "Could not open PDF.");
+      setPreview(null);
     } finally {
-      setSavingId("");
+      setPreviewLoading(false);
     }
   };
 
@@ -95,149 +107,125 @@ function CourseDetail() {
     );
   }
 
-  const completedMap = new Map(
-    (courseProgress?.topics || []).map((t) => [t.id, t.completed])
-  );
-  const coursePercent = courseProgress?.hasTopics
-    ? courseProgress.progressPercent ?? 0
-    : null;
-
   return (
     <section className="page-card page-hero">
       <PageHeader
-        title={course.code}
-        subtitle={course.title}
+        title={`${course.code} — ${course.title}`}
         fallback={`${base}/courses`}
       />
 
-      <div
-        className="course-card-media"
-        style={{ borderRadius: 16, marginBottom: "1rem" }}
-      >
-        <img
-          src={course.image}
-          alt={course.imageAlt || `${course.code} course image`}
-        />
-        <span className="course-level-badge">{course.levelLabel}</span>
+      <div className="section-head">
+        <h2>PDF materials</h2>
       </div>
 
-      <article className="stat-card" style={{ marginBottom: "1rem" }}>
-        <h3>Course progress</h3>
-        <div className="stat-value">
-          {coursePercent === null ? "—" : `${coursePercent}%`}
+      {notesError ? <p className="notes-error">{notesError}</p> : null}
+
+      {notesLoading ? (
+        <div className="empty-state">
+          <strong>Loading PDFs…</strong>
+          Fetching materials for this course.
         </div>
-        {courseProgress?.hasTopics ? (
-          <>
-            <div className="progress-track">
-              <div
-                className="progress-fill"
-                style={{ width: `${coursePercent || 0}%` }}
+      ) : notes.length === 0 ? (
+        <div className="empty-state">
+          <strong>No PDF materials yet</strong>
+          There are no PDFs available for this course right now.
+        </div>
+      ) : (
+        <ul className="course-notes-list">
+          {notes.map((note) => (
+            <li key={note.id}>
+              <div>
+                <strong>{note.title}</strong>
+                <span>
+                  {note.originalName}
+                  {note.size ? ` · ${formatBytes(note.size)}` : ""}
+                  {note.createdAt ? ` · ${formatNoteDate(note.createdAt)}` : ""}
+                </span>
+              </div>
+              <div className="course-note-actions">
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => openPreview(note)}
+                >
+                  View
+                </button>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() =>
+                    downloadNoteFile(
+                      note.id,
+                      note.originalName || "notes.pdf"
+                    ).catch((err) => setNotesError(err.message))
+                  }
+                >
+                  Download
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {preview ? (
+        <div
+          className="pq-preview-backdrop"
+          role="presentation"
+          onClick={closePreview}
+        >
+          <div
+            className="pq-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="pq-preview-head">
+              <div>
+                <h2>{preview.title}</h2>
+                <p className="muted">
+                  {course.code} — {course.title}
+                  {preview.originalName ? ` · ${preview.originalName}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={closePreview}
+              >
+                Close
+              </button>
+            </header>
+
+            {previewLoading ? (
+              <p className="notes-status">Loading preview…</p>
+            ) : null}
+
+            {!previewLoading && previewUrl ? (
+              <iframe
+                title={`${preview.title} PDF`}
+                className="pq-preview-pdf"
+                src={previewUrl}
               />
-            </div>
-            <p className="stat-note">
-              {courseProgress.completedTopics} of {courseProgress.totalTopics}{" "}
-              topics completed
-            </p>
-          </>
-        ) : (
-          <p className="stat-note">No topics available for this course yet</p>
-        )}
-      </article>
+            ) : null}
 
-      {status ? <p className="notes-status">{status}</p> : null}
-
-      <div className="lower-grid">
-        <div className="uploads-card">
-          <h2 style={{ marginBottom: "0.75rem" }}>Notes & Resources</h2>
-          {notesLoading ? (
-            <div className="empty-state">
-              <strong>Loading notes…</strong>
-              Fetching PDFs for {course.code}.
-            </div>
-          ) : notesError ? (
-            <div className="empty-state">
-              <strong>Could not load notes</strong>
-              {notesError}
-            </div>
-          ) : notes.length === 0 ? (
-            <div className="empty-state">
-              <strong>No notes yet</strong>
-              Official PDFs appear when administrators publish them for this
-              course.
-            </div>
-          ) : (
-            <ul className="course-notes-list">
-              {notes.map((note) => {
-                const done = Boolean(completedMap.get(note.id));
-                return (
-                  <li key={note.id}>
-                    <div>
-                      <strong>{note.title}</strong>
-                      <span>
-                        {note.originalName}
-                        {note.size ? ` · ${formatBytes(note.size)}` : ""}
-                        {note.createdAt
-                          ? ` · ${formatNoteDate(note.createdAt)}`
-                          : ""}
-                        {done ? " · Completed" : ""}
-                      </span>
-                    </div>
-                    <div className="course-note-actions">
-                      {!done ? (
-                        <button
-                          type="button"
-                          className="link-btn"
-                          disabled={savingId === note.id}
-                          onClick={() => handleComplete(note.id)}
-                        >
-                          {savingId === note.id ? "Saving…" : "Mark complete"}
-                        </button>
-                      ) : (
-                        <span className="topic-done-badge">Done</span>
-                      )}
-                      <button
-                        type="button"
-                        className="link-btn"
-                        onClick={() =>
-                          downloadNoteFile(
-                            note.id,
-                            note.originalName || "notes.pdf"
-                          ).catch((err) => setNotesError(err.message))
-                        }
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <Link to={`${base}/notes`} className="link-btn">
-            Go to Notes & Resources
-          </Link>
-        </div>
-        <div className="actions-card">
-          <h2 style={{ marginBottom: "0.75rem" }}>Course actions</h2>
-          <div className="quick-actions">
-            <Link className="quick-action teal" to={`${base}/quizzes`}>
-              Quizzes for this course <span aria-hidden="true">›</span>
-            </Link>
-            <Link
-              className="quick-action blue"
-              to={`${base}/ai-assistant?course=${course.code}`}
-            >
-              Ask AI about {course.code} <span aria-hidden="true">›</span>
-            </Link>
-            <Link className="quick-action amber" to={`${base}/past-questions`}>
-              Past questions <span aria-hidden="true">›</span>
-            </Link>
-            <Link className="quick-action green" to={`${base}/progress`}>
-              Track my progress <span aria-hidden="true">›</span>
-            </Link>
+            <footer className="pq-preview-foot">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() =>
+                  downloadNoteFile(
+                    preview.id,
+                    preview.originalName || "notes.pdf"
+                  ).catch((err) => setNotesError(err.message))
+                }
+              >
+                Download
+              </button>
+            </footer>
           </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

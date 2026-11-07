@@ -64,7 +64,7 @@ export async function deleteNote(noteId) {
   });
 }
 
-export async function downloadNoteFile(noteId, filename = "notes.pdf") {
+export async function fetchNoteFileBlob(noteId) {
   const token = getToken();
   const url = `${getApiBaseUrl()}/api/notes/${noteId}/file`;
   const response = await fetch(url, {
@@ -72,7 +72,7 @@ export async function downloadNoteFile(noteId, filename = "notes.pdf") {
   });
 
   if (!response.ok) {
-    let message = `Download failed (${response.status})`;
+    let message = `Could not open file (${response.status})`;
     try {
       const data = await response.json();
       if (data?.message) message = data.message;
@@ -82,7 +82,11 @@ export async function downloadNoteFile(noteId, filename = "notes.pdf") {
     throw new Error(message);
   }
 
-  const blob = await response.blob();
+  return response.blob();
+}
+
+export async function downloadNoteFile(noteId, filename = "notes.pdf") {
+  const blob = await fetchNoteFileBlob(noteId);
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;
