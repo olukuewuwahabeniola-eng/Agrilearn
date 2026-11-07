@@ -191,14 +191,18 @@ function DashboardTopbar({ onMenuToggle }) {
                       onClick={() => setNotifOpen(false)}
                     >
                       <strong>{item.title}</strong>
-                      <span>
-                        {item.kind === "past_question"
-                          ? "Past question"
-                          : "Lecture notes"}
-                        {item.courseCode ? ` · ${item.courseCode}` : ""}
-                        {item.createdAt
-                          ? ` · ${formatUploadDate(item.createdAt)}`
-                          : ""}
+                      <span className="dash-notif-meta">
+                        <span>
+                          {item.kind === "past_question"
+                            ? "Past question"
+                            : "Lecture notes"}
+                          {item.courseCode ? ` · ${item.courseCode}` : ""}
+                        </span>
+                        {item.createdAt ? (
+                          <time dateTime={item.createdAt}>
+                            {formatUploadDate(item.createdAt)}
+                          </time>
+                        ) : null}
                       </span>
                     </Link>
                   </li>
