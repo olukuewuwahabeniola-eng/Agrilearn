@@ -17,7 +17,11 @@ const {
   readStoredPdf,
   deleteStoredNoteFile,
 } = require("../utils/noteStorage");
-const { pdfTooLargeMessage } = require("../utils/uploadLimits");
+const {
+  MAX_IMAGE_BYTES,
+  pdfTooLargeMessage,
+  imageTooLargeMessage,
+} = require("../utils/uploadLimits");
 const {
   logAiInteraction,
   logMaterialViewIfNeeded,
@@ -25,40 +29,57 @@ const {
 } = require("../utils/activityTracker");
 
 const ALLOWED_ACTIONS = ["ask", "summarise", "quiz"];
+const ALLOWED_UPLOAD_MIMES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PDF_BYTES, files: 1 },
+  limits: { fileSize: MAX_PDF_BYTES, files: 2 },
   fileFilter(req, file, cb) {
-    if (file.mimetype === "application/pdf") {
+    const mime = String(file.mimetype || "").toLowerCase();
+    if (ALLOWED_UPLOAD_MIMES.has(mime)) {
       cb(null, true);
       return;
     }
-    cb(new Error("Only PDF files are allowed."));
+    cb(new Error("Only PDF, JPG, JPEG, PNG, or WEBP files are allowed."));
   },
 });
 
-const pdfUpload = upload.single("pdf");
+const fileUpload = upload.fields([
+  { name: "pdf", maxCount: 1 },
+  { name: "image", maxCount: 1 },
+]);
 
 function runPdfUpload(req, res) {
   return new Promise((resolve, reject) => {
-    pdfUpload(req, res, (error) => {
+    fileUpload(req, res, (error) => {
       if (error) reject(error);
       else resolve();
     });
   });
 }
 
-function formatHistoryForPrompt(messages, limit = 8) {
+function getUploadedDeviceFile(req) {
+  const pdf = req.files?.pdf?.[0];
+  const image = req.files?.image?.[0];
+  return pdf || image || null;
+}
+
+function formatHistoryForPrompt(messages, limit = 12) {
   if (!Array.isArray(messages) || !messages.length) return "";
   const recent = messages.slice(-limit);
   const lines = recent.map((m) => {
     const who = m.role === "user" ? "Student" : "Assistant";
-    const text = String(m.text || "").slice(0, 1200);
+    const text = String(m.text || "").slice(0, 1800);
     return `${who}: ${text}`;
   });
   return (
-    `\nPrior conversation (for continuity — answer the latest request):\n` +
+    `\nPrior conversation (for continuity — answer the latest request; build on earlier explanations without unnecessary repetition):\n` +
     `${lines.join("\n")}\n`
   );
 }
@@ -69,30 +90,36 @@ function buildPrompt({
   student,
   course,
   pdfName,
+  pdfMimeType,
   historyMessages,
 }) {
   const level = student.level;
   const courseLine = course
     ? `Selected course: ${course.code} — ${course.title} (${level} Level).`
     : `No specific course selected. Student is ${level} Level.`;
-  const pdfLine = pdfName
-    ? `Attached lecture PDF: ${pdfName}.`
-    : "No lecture PDF attached.";
+  const isImage = String(pdfMimeType || "").startsWith("image/");
+  const attachmentLine = pdfName
+    ? `Attached ${isImage ? "image" : "document"}: ${pdfName}.`
+    : "No lecture document attached.";
   const historyBlock = formatHistoryForPrompt(historyMessages);
 
   const base =
     `Student name: ${student.fullName || "Student"}.\n` +
     `Academic level: ${level} Level.\n` +
     `${courseLine}\n` +
-    `${pdfLine}\n` +
+    `${attachmentLine}\n` +
     `Only use materials for this student's level. Do not discuss other levels' syllabi unless asked generally.\n` +
     historyBlock;
 
   if (action === "summarise") {
     return (
       `${base}\n` +
-      `Task: Summarise the attached lecture PDF into clear study notes for a ${level} Level agriculture student.\n` +
-      `Use short headings and bullet points. Highlight key definitions and takeaways.\n` +
+      `Task: Produce a comprehensive study summary of the attached material for a ${level} Level agriculture student.\n` +
+      `Cover major topics/sections, important definitions, key facts, examples, and relationships from the document.\n` +
+      `Use Markdown with clear headings, bullet points, and a Key takeaways section.\n` +
+      `Do not reduce the whole document to a few sentences. Preserve important information from the source.\n` +
+      `Clearly label any extra explanation that is not directly from the document.\n` +
+      `Do not invent content that is not present in the attached material.\n` +
       (question ? `Extra student request: ${question}\n` : "")
     );
   }
@@ -100,18 +127,22 @@ function buildPrompt({
   if (action === "quiz") {
     return (
       `${base}\n` +
-      `Task: Generate a short practice quiz (6–10 questions) for this ${level} Level student.\n` +
-      `Prefer the attached PDF when present; otherwise use the selected course topic.\n` +
-      `Include a mix of short-answer and multiple-choice items, then provide an answer key.\n` +
+      `Task: Generate a practice quiz (8–12 questions) for this ${level} Level student.\n` +
+      `Prefer the attached document/image when present; otherwise use the selected course topic.\n` +
+      `Include a mix of short-answer and multiple-choice items that test understanding, not only recall.\n` +
+      `Use Markdown with a Questions section and a separate Answer Key section with brief explanations.\n` +
       (question ? `Focus areas from student: ${question}\n` : "")
     );
   }
 
   return (
     `${base}\n` +
-    `Task: Answer the student's academic question clearly for ${level} Level.\n` +
-    `If a PDF is attached, use it as the primary source.\n` +
-    `If a course is selected but no PDF is attached, teach from the course topic and general academic knowledge.\n\n` +
+    `Task: Answer the student's academic question for ${level} Level with appropriate depth.\n` +
+    `For complex topics, explain thoroughly with sections, key terms, agricultural examples, and practical applications.\n` +
+    `For simple questions, keep the answer clear and concise.\n` +
+    `If a document/image is attached, use it as the primary source and say when you add general academic context.\n` +
+    `If a course is selected but no file is attached, teach from the course topic and sound academic knowledge.\n` +
+    `Use Markdown formatting. Add Key takeaways when useful.\n\n` +
     `Student question:\n${question}\n`
   );
 }
@@ -332,16 +363,29 @@ async function assist(req, res) {
     let pdfMimeType = null;
     let pdfName = null;
     let libraryNote = null;
+    const deviceFile = getUploadedDeviceFile(req);
 
-    if (req.file?.buffer?.length) {
-      pdfBuffer = req.file.buffer;
-      pdfMimeType = req.file.mimetype;
-      pdfName = req.file.originalname;
+    if (deviceFile?.buffer?.length) {
+      const mime = String(deviceFile.mimetype || "").toLowerCase();
+      const isPdf = mime === "application/pdf";
+      const isImage = mime.startsWith("image/");
 
-      if (course) {
+      if (isImage && deviceFile.buffer.length > MAX_IMAGE_BYTES) {
+        return res.status(400).json({
+          success: false,
+          message: imageTooLargeMessage(),
+        });
+      }
+
+      pdfBuffer = deviceFile.buffer;
+      pdfMimeType = deviceFile.mimetype;
+      pdfName = deviceFile.originalname;
+
+      // Persist PDFs only into personal library. Chat images stay ephemeral.
+      if (isPdf && course) {
         try {
           libraryNote = await persistUploadToLibrary({
-            file: req.file,
+            file: deviceFile,
             student,
             course,
           });
@@ -368,14 +412,15 @@ async function assist(req, res) {
       return res.status(400).json({
         success: false,
         message:
-          "Select a course or choose/upload a PDF before summarising or generating a quiz.",
+          "Select a course or choose/upload a file before summarising or generating a quiz.",
       });
     }
 
     if (action === "summarise" && !hasPdf) {
       return res.status(400).json({
         success: false,
-        message: "Choose a library PDF or upload a lecture PDF to summarise.",
+        message:
+          "Choose a library PDF or upload a lecture PDF/image to summarise.",
       });
     }
 
@@ -385,6 +430,7 @@ async function assist(req, res) {
       student,
       course,
       pdfName,
+      pdfMimeType,
       historyMessages: existingConversation?.messages || [],
     });
     const reply = await generateAgriLearnReply({
@@ -413,7 +459,11 @@ async function assist(req, res) {
       console.error("Conversation persist warning:", persistError.message);
     }
 
-    if (libraryNote && req.file?.buffer?.length) {
+    if (
+      libraryNote &&
+      deviceFile?.buffer?.length &&
+      String(deviceFile.mimetype || "").toLowerCase() === "application/pdf"
+    ) {
       await recordPersonalUpload(student, libraryNote, { via: "ai_assistant" });
     }
 
@@ -470,7 +520,11 @@ async function assist(req, res) {
       });
     }
 
-    if (error && error.message === "Only PDF files are allowed.") {
+    if (
+      error &&
+      (error.message === "Only PDF files are allowed." ||
+        error.message === "Only PDF, JPG, JPEG, PNG, or WEBP files are allowed.")
+    ) {
       return res.status(400).json({
         success: false,
         message: error.message,

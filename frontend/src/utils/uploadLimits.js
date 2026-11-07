@@ -30,6 +30,28 @@ export function validatePdfFile(file) {
 }
 
 /**
+ * @param {File | null | undefined} file
+ * @returns {string} Error message, or empty string when valid.
+ */
+export function validateImageFile(file) {
+  if (!file) return "Choose an image to upload.";
+  const type = String(file.type || "").toLowerCase();
+  if (
+    type &&
+    type !== "image/jpeg" &&
+    type !== "image/jpg" &&
+    type !== "image/png" &&
+    type !== "image/webp"
+  ) {
+    return "Only JPG, JPEG, PNG, or WEBP images are allowed.";
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return IMAGE_TOO_LARGE_MESSAGE;
+  }
+  return "";
+}
+
+/**
  * @param {File[]} files
  * @returns {string} Error message, or empty string when valid.
  */

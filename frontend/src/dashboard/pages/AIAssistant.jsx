@@ -15,36 +15,37 @@ import {
   uploadNote,
 } from "../../utils/notesApi";
 import { completeQuiz } from "../../utils/dashboardApi";
-import { validatePdfFile } from "../../utils/uploadLimits";
+import {
+  validateImageFile,
+  validatePdfFile,
+} from "../../utils/uploadLimits";
 import AiMarkdown from "../components/AiMarkdown";
-import PageHeader from "../components/PageHeader";
 import { useLevelCourses } from "../hooks/useLevelCourses";
-
-const WELCOME_MESSAGE = {
-  role: "bot",
-  text:
-    "## Welcome to AgriLearn AI\n\nChoose a **course**, then pick a document from **General Materials** (official) or **My Personal Uploads**, or upload your own PDF.\n\nYour chats are saved automatically — open **Conversation History** anytime to continue where you left off.",
-};
+import "./ai-assistant.css";
 
 /**
  * Shared AgriLearn AI Assistant for all academic levels.
- * Persistent MongoDB conversation history + PDF library. Gemini on the backend.
+ * ChatGPT-style layout + persistent conversations + PDF/image attachments.
  */
 function AIAssistant() {
   const [params] = useSearchParams();
   const { level, courses } = useLevelCourses();
   const initialCourse = params.get("course") || "";
-  const fileInputRef = useRef(null);
+
+  const pdfInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const chatLogRef = useRef(null);
+  const plusMenuRef = useRef(null);
 
   const [course, setCourse] = useState(initialCourse);
   const [libraryNotes, setLibraryNotes] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
-  const [materialLibrary, setMaterialLibrary] = useState("official");
+  const [pickerLibrary, setPickerLibrary] = useState(null);
   const [selectedNote, setSelectedNote] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,7 +54,7 @@ function AIAssistant() {
 
   const [conversationId, setConversationId] = useState(null);
   const [conversationTitle, setConversationTitle] = useState("New chat");
-  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState([]);
 
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -61,29 +62,42 @@ function AIAssistant() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyOpen, setHistoryOpen] = useState(true);
 
-  const hasPdf = Boolean(selectedNote || pdfFile);
+  const [plusOpen, setPlusOpen] = useState(false);
 
-  const selectedLabel = useMemo(() => {
-    const parts = [];
-    if (course) {
-      const match = courses.find((item) => item.code === course);
-      parts.push(
-        match ? `Course: ${match.code} — ${match.title}` : `Course: ${course}`
-      );
-    }
+  const hasAttachment = Boolean(selectedNote || pdfFile || imageFile);
+  const conversationStarted = messages.some((msg) => msg.role === "user");
+
+  const attachmentChips = useMemo(() => {
+    const chips = [];
     if (selectedNote) {
-      const src =
-        selectedNote.source === "official"
-          ? "General Materials (Official)"
-          : "My Personal Uploads";
-      parts.push(
-        `${src}: ${selectedNote.title || selectedNote.originalName}`
-      );
-    } else if (pdfFile) {
-      parts.push(`Device PDF: ${pdfFile.name}`);
+      chips.push({
+        id: `note-${selectedNote.id}`,
+        label: selectedNote.title || selectedNote.originalName,
+        meta:
+          selectedNote.source === "official"
+            ? "General Materials"
+            : "My Uploads",
+        kind: "note",
+      });
     }
-    return parts.length ? parts.join(" · ") : "No material selected";
-  }, [course, courses, selectedNote, pdfFile]);
+    if (pdfFile) {
+      chips.push({
+        id: `pdf-${pdfFile.name}-${pdfFile.size}`,
+        label: pdfFile.name,
+        meta: "Device PDF",
+        kind: "pdf",
+      });
+    }
+    if (imageFile) {
+      chips.push({
+        id: `img-${imageFile.name}-${imageFile.size}`,
+        label: imageFile.name,
+        meta: "Device image",
+        kind: "image",
+      });
+    }
+    return chips;
+  }, [selectedNote, pdfFile, imageFile]);
 
   const filteredLibrary = useMemo(() => {
     const q = librarySearch.trim().toLowerCase();
@@ -103,19 +117,22 @@ function AIAssistant() {
     });
   }, [libraryNotes, librarySearch]);
 
-  const refreshHistory = useCallback(async (q = historySearch) => {
-    setHistoryLoading(true);
-    setHistoryError("");
-    try {
-      const data = await listConversations(q);
-      setHistory(Array.isArray(data.conversations) ? data.conversations : []);
-    } catch (error) {
-      setHistory([]);
-      setHistoryError(error.message || "Could not load conversation history.");
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [historySearch]);
+  const refreshHistory = useCallback(
+    async (q = historySearch) => {
+      setHistoryLoading(true);
+      setHistoryError("");
+      try {
+        const data = await listConversations(q);
+        setHistory(Array.isArray(data.conversations) ? data.conversations : []);
+      } catch (error) {
+        setHistory([]);
+        setHistoryError(error.message || "Could not load conversation history.");
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [historySearch]
+  );
 
   useEffect(() => {
     const el = chatLogRef.current;
@@ -131,8 +148,12 @@ function AIAssistant() {
   }, [historySearch, refreshHistory]);
 
   useEffect(() => {
-    setLibrarySearch("");
-
+    if (!pickerLibrary) {
+      setLibraryNotes([]);
+      setLibraryError("");
+      setLibraryLoading(false);
+      return;
+    }
     if (!course) {
       setLibraryNotes([]);
       setLibraryError("");
@@ -146,7 +167,7 @@ function AIAssistant() {
       setLibraryError("");
       try {
         const data = await listNotes({
-          library: materialLibrary,
+          library: pickerLibrary,
           courseCode: course,
         });
         if (!cancelled) {
@@ -156,7 +177,7 @@ function AIAssistant() {
         if (!cancelled) {
           setLibraryNotes([]);
           setLibraryError(
-            error.message || "Could not load the course PDF library."
+            error.message || "Could not load materials for this course."
           );
         }
       } finally {
@@ -168,45 +189,68 @@ function AIAssistant() {
     return () => {
       cancelled = true;
     };
-  }, [course, materialLibrary]);
+  }, [course, pickerLibrary]);
 
-  const handleCourseChange = (nextCourse) => {
-    setCourse(nextCourse);
-    setSelectedNote(null);
-    setPdfFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  useEffect(() => {
+    if (!plusOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (!plusMenuRef.current?.contains(event.target)) {
+        setPlusOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setPlusOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [plusOpen]);
 
   const pushBot = (text) => {
     setMessages((current) => [...current, { role: "bot", text }]);
   };
 
-  const refreshLibrary = async (preferNoteId) => {
+  const refreshLibrary = async (preferNoteId, library = "personal") => {
     if (!course) return;
     try {
       const data = await listNotes({
-        library: materialLibrary,
+        library,
         courseCode: course,
       });
       const notes = Array.isArray(data.notes) ? data.notes : [];
-      setLibraryNotes(notes);
+      if (pickerLibrary === library) setLibraryNotes(notes);
       if (preferNoteId) {
         const match = notes.find((note) => note.id === preferNoteId);
-        if (match) setSelectedNote(match);
+        if (match) {
+          setSelectedNote(match);
+          setPdfFile(null);
+          setImageFile(null);
+        }
       }
     } catch {
       /* keep current list */
     }
   };
 
+  const clearAttachments = () => {
+    setSelectedNote(null);
+    setPdfFile(null);
+    setImageFile(null);
+    if (pdfInputRef.current) pdfInputRef.current.value = "";
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
   const startNewChat = () => {
     setConversationId(null);
     setConversationTitle("New chat");
-    setMessages([WELCOME_MESSAGE]);
+    setMessages([]);
     setQuestion("");
-    setSelectedNote(null);
-    setPdfFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    clearAttachments();
+    setPickerLibrary(null);
+    setPlusOpen(false);
   };
 
   const openConversation = async (id) => {
@@ -223,21 +267,15 @@ function AIAssistant() {
       setMessages(
         Array.isArray(convo.messages) && convo.messages.length
           ? convo.messages.map((m) => ({ role: m.role, text: m.text }))
-          : [WELCOME_MESSAGE]
+          : []
       );
-      setSelectedNote(null);
-      setPdfFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      clearAttachments();
+      setPickerLibrary(null);
 
       if (convo.noteId) {
         try {
           const noteData = await getNote(convo.noteId);
-          if (noteData?.note) {
-            setSelectedNote(noteData.note);
-            setMaterialLibrary(
-              noteData.note.source === "personal" ? "personal" : "official"
-            );
-          }
+          if (noteData?.note) setSelectedNote(noteData.note);
         } catch {
           /* ignore */
         }
@@ -258,9 +296,7 @@ function AIAssistant() {
 
     try {
       await deleteConversation(id);
-      if (conversationId === id) {
-        startNewChat();
-      }
+      if (conversationId === id) startNewChat();
       await refreshHistory(historySearch);
     } catch (error) {
       setHistoryError(error.message || "Could not delete conversation.");
@@ -280,7 +316,9 @@ function AIAssistant() {
       if (course) form.append("courseCode", course);
       if (conversationId) form.append("conversationId", conversationId);
 
-      if (pdfFile) {
+      if (imageFile) {
+        form.append("image", imageFile);
+      } else if (pdfFile) {
         form.append("pdf", pdfFile);
       } else if (selectedNote?.id) {
         form.append("noteId", selectedNote.id);
@@ -293,21 +331,21 @@ function AIAssistant() {
 
       pushBot(data.reply || "No reply was returned.");
 
-      if (data.conversationId) {
-        setConversationId(data.conversationId);
-      }
+      if (data.conversationId) setConversationId(data.conversationId);
       if (data.conversation?.title) {
         setConversationTitle(data.conversation.title);
       }
 
-      if (action === "quiz" && course) {
-        setPendingQuizCourse(course);
-      }
+      if (action === "quiz" && course) setPendingQuizCourse(course);
 
       if (pdfFile && course) {
         setPdfFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        await refreshLibrary(data.noteId || null);
+        if (pdfInputRef.current) pdfInputRef.current.value = "";
+        await refreshLibrary(data.noteId || null, "personal");
+      }
+      if (imageFile) {
+        setImageFile(null);
+        if (imageInputRef.current) imageInputRef.current.value = "";
       }
 
       await refreshHistory(historySearch);
@@ -356,17 +394,17 @@ function AIAssistant() {
 
     const sizeError = validatePdfFile(file);
     if (sizeError) {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
       pushBot(sizeError);
       return;
     }
 
+    setImageFile(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    setSelectedNote(null);
+
     if (!course) {
       setPdfFile(file);
-      setSelectedNote(null);
-      pushBot(
-        "PDF selected from your device. Choose a course so it can be saved to your AgriLearn library, or continue using it for this chat only."
-      );
       return;
     }
 
@@ -379,189 +417,414 @@ function AIAssistant() {
         description: "Personal upload from AI Assistant",
       });
       setPdfFile(null);
-      setMaterialLibrary("personal");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      await refreshLibrary(data.note?.id);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+      await refreshLibrary(data.note?.id, "personal");
       pushBot(
         data.duplicated
-          ? `**${data.note?.title || file.name}** is already in My Personal Uploads — selected for AI.`
-          : `**${data.note?.title || file.name}** was saved to My Personal Uploads and selected for AI.`
+          ? `**${data.note?.title || file.name}** is already in My Personal Uploads — attached for AI.`
+          : `**${data.note?.title || file.name}** was saved to My Personal Uploads and attached.`
       );
     } catch (error) {
-      setSelectedNote(null);
       setPdfFile(file);
       pushBot(
         error.message ||
-          "Could not save to the library. The PDF is still available for this chat from your device."
+          "Could not save to the library. The PDF is still attached for this chat."
       );
     } finally {
       setUploading(false);
     }
   };
 
-  const clearPdfSelection = () => {
-    setSelectedNote(null);
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+    const sizeError = validateImageFile(file);
+    if (sizeError) {
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      pushBot(sizeError);
+      return;
+    }
     setPdfFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setSelectedNote(null);
+    if (pdfInputRef.current) pdfInputRef.current.value = "";
+    setImageFile(file);
   };
 
   const selectLibraryNote = (note) => {
     setSelectedNote(note);
     setPdfFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setImageFile(null);
+    if (pdfInputRef.current) pdfInputRef.current.value = "";
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    setPickerLibrary(null);
+    setLibrarySearch("");
+  };
+
+  const removeChip = (kind) => {
+    if (kind === "note") setSelectedNote(null);
+    if (kind === "pdf") {
+      setPdfFile(null);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+    if (kind === "image") {
+      setImageFile(null);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
+
+  const openPicker = (library) => {
+    setPlusOpen(false);
+    setPickerLibrary(library);
+    setLibrarySearch("");
   };
 
   return (
-    <section className="page-hero ai-page">
-      <PageHeader
-        title="AI Assistant"
-        subtitle={`Ask questions, summarise notes, and generate quizzes for your ${level} Level courses.`}
-      />
+    <section
+      className={`page-hero ai-page ai-shell${historyOpen ? "" : " history-collapsed"}`}
+    >
+      <aside className={`ai-history-panel${historyOpen ? "" : " is-collapsed"}`}>
+        <div className="ai-history-brand">
+          <div className="ai-history-brand-mark" aria-hidden="true">
+            AI
+          </div>
+          <div>
+            <strong>AgriLearn AI</strong>
+            <span>{level} Level</span>
+          </div>
+        </div>
 
-      <div className="ai-chat-toolbar">
         <button
           type="button"
-          className="btn btn-primary ai-new-chat-btn"
+          className="ai-history-new"
           onClick={startNewChat}
           disabled={loading}
         >
-          New Chat
+          + New chat
         </button>
-        <div className="ai-chat-toolbar-meta">
-          <strong>{conversationTitle}</strong>
-          <span>
-            {conversationId
-              ? "Saved to your account"
-              : "Starts saving after your first message"}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="btn btn-outline ai-history-toggle"
-          onClick={() => setHistoryOpen((open) => !open)}
-        >
-          {historyOpen ? "Hide History" : "Show History"}
-        </button>
-      </div>
 
-      <div className={`ai-layout ai-layout-with-history${historyOpen ? "" : " history-collapsed"}`}>
-        <aside className={`ai-history${historyOpen ? "" : " is-collapsed"}`}>
-          <div className="ai-history-head">
-            <h3>Conversation History</h3>
-            <span>{history.length}</span>
-          </div>
+        <label className="sr-only" htmlFor="ai-history-search">
+          Search conversations
+        </label>
+        <input
+          id="ai-history-search"
+          type="search"
+          className="ai-history-search"
+          placeholder="Search chats…"
+          value={historySearch}
+          onChange={(e) => setHistorySearch(e.target.value)}
+        />
 
-          <label className="sr-only" htmlFor="ai-history-search">
-            Search conversations
-          </label>
-          <input
-            id="ai-history-search"
-            type="search"
-            className="ai-history-search"
-            placeholder="Search your chats…"
-            value={historySearch}
-            onChange={(e) => setHistorySearch(e.target.value)}
-          />
+        {historyError ? <p className="ai-history-error">{historyError}</p> : null}
 
-          {historyError ? (
-            <p className="ai-history-error">{historyError}</p>
-          ) : null}
-
-          <div className="ai-history-list" role="list">
-            {historyLoading ? (
-              <p className="ai-history-empty">Loading history…</p>
-            ) : history.length === 0 ? (
-              <p className="ai-history-empty">
-                {historySearch.trim()
-                  ? "No conversations match your search."
-                  : "No saved conversations yet. Send a message to start one."}
-              </p>
-            ) : (
-              history.map((item) => {
-                const active = conversationId === item.id;
-                return (
-                  <div
-                    key={item.id}
-                    role="listitem"
-                    className={`ai-history-item${active ? " active" : ""}`}
+        <div className="ai-history-list" role="list">
+          {historyLoading ? (
+            <p className="ai-history-empty">Loading history…</p>
+          ) : history.length === 0 ? (
+            <p className="ai-history-empty">
+              {historySearch.trim()
+                ? "No conversations match your search."
+                : "Your chats will appear here."}
+            </p>
+          ) : (
+            history.map((item) => {
+              const active = conversationId === item.id;
+              return (
+                <div
+                  key={item.id}
+                  role="listitem"
+                  className={`ai-history-item${active ? " active" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="ai-history-open"
+                    onClick={() => openConversation(item.id)}
+                    disabled={loading}
                   >
-                    <button
-                      type="button"
-                      className="ai-history-open"
-                      onClick={() => openConversation(item.id)}
-                      disabled={loading}
-                    >
-                      <span className="ai-history-title">{item.title}</span>
-                      <span className="ai-history-meta">
-                        {item.courseCode
-                          ? `${item.courseCode} · `
-                          : `${item.level || level} Level · `}
-                        {formatConversationDate(item.updatedAt)}
-                      </span>
-                      {item.preview ? (
-                        <span className="ai-history-preview">{item.preview}</span>
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      className="ai-history-delete"
-                      title="Delete conversation"
-                      aria-label={`Delete ${item.title}`}
-                      onClick={() =>
-                        handleDeleteConversation(item.id, item.title)
-                      }
-                      disabled={loading}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                );
-              })
-            )}
+                    <span className="ai-history-title">{item.title}</span>
+                    <span className="ai-history-meta">
+                      {item.courseCode
+                        ? `${item.courseCode} · `
+                        : `${item.level || level} Level · `}
+                      {formatConversationDate(item.updatedAt)}
+                    </span>
+                    {item.preview ? (
+                      <span className="ai-history-preview">{item.preview}</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-history-delete"
+                    title="Delete conversation"
+                    aria-label={`Delete ${item.title}`}
+                    onClick={() => handleDeleteConversation(item.id, item.title)}
+                    disabled={loading}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </aside>
+
+      <div className="ai-main">
+        <header className="ai-topbar">
+          <button
+            type="button"
+            className="ai-topbar-history"
+            onClick={() => setHistoryOpen((open) => !open)}
+            aria-expanded={historyOpen}
+          >
+            {historyOpen ? "Hide chats" : "Chats"}
+          </button>
+          <div className="ai-topbar-title">
+            <strong>{conversationTitle}</strong>
+            <span>
+              {conversationId
+                ? "Saved to your account"
+                : "Saves after your first message"}
+            </span>
           </div>
-        </aside>
+          <button
+            type="button"
+            className="ai-topbar-new"
+            onClick={startNewChat}
+            disabled={loading}
+          >
+            New chat
+          </button>
+        </header>
 
-        <div className="ai-chat">
-          <div className="ai-chat-log" ref={chatLogRef} aria-live="polite">
-            {messages.map((msg, index) => (
-              <article
-                key={`${msg.role}-${index}-${msg.text?.slice(0, 12) || ""}`}
-                className={`ai-row ${msg.role}`}
-              >
-                <div className="ai-avatar" aria-hidden="true">
-                  {msg.role === "bot" ? "AI" : "You"}
-                </div>
-                <div className={`ai-bubble ${msg.role}`}>
-                  {msg.role === "bot" ? (
-                    <AiMarkdown content={msg.text} />
-                  ) : (
-                    <p className="ai-user-text">{msg.text}</p>
-                  )}
-                </div>
-              </article>
-            ))}
+        <div className="ai-chat-stage" ref={chatLogRef} aria-live="polite">
+          {!conversationStarted && !loading ? (
+            <div className="ai-welcome">
+              <div className="ai-welcome-mark" aria-hidden="true">
+                AI
+              </div>
+              <h1>How can AgriLearn AI help today?</h1>
+              <p>
+                Ask course questions, attach lecture notes or images, summarise
+                materials, or generate a practice quiz.
+              </p>
+              <div className="ai-welcome-actions">
+                <button
+                  type="button"
+                  className="ai-welcome-chip"
+                  onClick={() =>
+                    setQuestion("Explain this topic step by step with examples.")
+                  }
+                >
+                  Explain a concept
+                </button>
+                <button
+                  type="button"
+                  className="ai-welcome-chip"
+                  disabled={!hasAttachment}
+                  onClick={() =>
+                    runAction(
+                      "summarise",
+                      "Please create a comprehensive study summary of the attached material."
+                    )
+                  }
+                >
+                  Summarise attachment
+                </button>
+                <button
+                  type="button"
+                  className="ai-welcome-chip"
+                  disabled={!course && !hasAttachment}
+                  onClick={() =>
+                    runAction(
+                      "quiz",
+                      "Please generate a practice quiz from the selected course or attached material."
+                    )
+                  }
+                >
+                  Practice quiz
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="ai-chat-log">
+              {messages.map((msg, index) => (
+                <article
+                  key={`${msg.role}-${index}-${msg.text?.slice(0, 12) || ""}`}
+                  className={`ai-row ${msg.role}`}
+                >
+                  <div className="ai-avatar" aria-hidden="true">
+                    {msg.role === "bot" ? "AI" : "You"}
+                  </div>
+                  <div className={`ai-bubble ${msg.role}`}>
+                    {msg.role === "bot" ? (
+                      <AiMarkdown content={msg.text} />
+                    ) : (
+                      <p className="ai-user-text">{msg.text}</p>
+                    )}
+                  </div>
+                </article>
+              ))}
 
-            {loading && (
-              <article className="ai-row bot ai-loading-row">
-                <div className="ai-avatar" aria-hidden="true">
-                  AI
-                </div>
-                <div className="ai-bubble bot ai-loading-bubble">
-                  <span className="ai-loading-label">Generating response</span>
-                  <span className="ai-typing" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
+              {loading ? (
+                <article className="ai-row bot ai-loading-row">
+                  <div className="ai-avatar" aria-hidden="true">
+                    AI
+                  </div>
+                  <div className="ai-bubble bot ai-loading-bubble">
+                    <span className="ai-loading-label">Thinking</span>
+                    <span className="ai-typing" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  </div>
+                </article>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <div className="ai-composer-dock">
+          {(attachmentChips.length > 0 || uploading) && (
+            <div className="ai-attach-row">
+              {uploading ? (
+                <span className="ai-attach-status">Saving PDF…</span>
+              ) : null}
+              {attachmentChips.map((chip) => (
+                <span key={chip.id} className="ai-attach-chip">
+                  <span>
+                    <strong>{chip.label}</strong>
+                    <em>{chip.meta}</em>
                   </span>
-                </div>
-              </article>
-            )}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${chip.label}`}
+                    onClick={() => removeChip(chip.kind)}
+                    disabled={loading || uploading}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="ai-tool-row">
+            <label className="sr-only" htmlFor="ai-course">
+              Select course
+            </label>
+            <select
+              id="ai-course"
+              value={course}
+              onChange={(e) => {
+                setCourse(e.target.value);
+                clearAttachments();
+              }}
+              disabled={loading || uploading}
+            >
+              <option value="">Course (optional)</option>
+              {courses.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.code} — {item.title}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              className="ai-tool-btn"
+              disabled={loading || uploading || !hasAttachment}
+              onClick={() =>
+                runAction(
+                  "summarise",
+                  "Please create a comprehensive study summary of the attached material."
+                )
+              }
+            >
+              Summarise
+            </button>
+            <button
+              type="button"
+              className="ai-tool-btn"
+              disabled={loading || uploading || (!course && !hasAttachment)}
+              onClick={() =>
+                runAction(
+                  "quiz",
+                  "Please generate a practice quiz from the selected course or attached material."
+                )
+              }
+            >
+              Quiz
+            </button>
+            {pendingQuizCourse ? (
+              <button
+                type="button"
+                className="ai-tool-btn ai-tool-btn-primary"
+                disabled={markingQuiz || loading}
+                onClick={handleMarkQuizCompleted}
+              >
+                {markingQuiz
+                  ? "Saving…"
+                  : `Mark ${pendingQuizCourse} quiz done`}
+              </button>
+            ) : null}
           </div>
 
           <form className="ai-compose" onSubmit={handleAsk}>
+            <div className="ai-plus-wrap" ref={plusMenuRef}>
+              <button
+                type="button"
+                className={`ai-plus-btn${plusOpen ? " open" : ""}`}
+                aria-label="Add attachment"
+                aria-expanded={plusOpen}
+                disabled={loading || uploading}
+                onClick={() => setPlusOpen((open) => !open)}
+              >
+                +
+              </button>
+              {plusOpen ? (
+                <div className="ai-plus-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPlusOpen(false);
+                      pdfInputRef.current?.click();
+                    }}
+                  >
+                    Upload PDF or Document
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setPlusOpen(false);
+                      imageInputRef.current?.click();
+                    }}
+                  >
+                    Upload Image
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => openPicker("personal")}
+                  >
+                    From My Uploads
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => openPicker("official")}
+                  >
+                    From General Materials
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             <textarea
-              rows={2}
-              placeholder="Ask a question about your course or PDF..."
+              rows={1}
+              placeholder="Message AgriLearn AI…"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               disabled={loading}
@@ -574,217 +837,153 @@ function AIAssistant() {
                 }
               }}
             />
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? "Sending..." : "Send"}
+
+            <button
+              type="submit"
+              className="ai-send-btn"
+              disabled={loading || !question.trim()}
+              aria-label="Send message"
+            >
+              {loading ? "…" : "Send"}
             </button>
           </form>
-        </div>
 
-        <aside className="ai-side">
-          <h3 className="ai-side-title">Study tools</h3>
-
-          <label htmlFor="ai-course">Select a course ({level} Level)</label>
-          <select
-            id="ai-course"
-            value={course}
-            onChange={(e) => handleCourseChange(e.target.value)}
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf"
+            className="sr-only"
+            tabIndex={-1}
             disabled={loading || uploading}
+            onChange={handlePdfChange}
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            className="sr-only"
+            tabIndex={-1}
+            disabled={loading || uploading}
+            onChange={handleImageChange}
+          />
+        </div>
+      </div>
+
+      {pickerLibrary ? (
+        <div
+          className="ai-picker-backdrop"
+          role="presentation"
+          onClick={() => setPickerLibrary(null)}
+        >
+          <div
+            className="ai-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              pickerLibrary === "personal"
+                ? "My Personal Uploads"
+                : "General Materials"
+            }
+            onClick={(e) => e.stopPropagation()}
           >
-            <option value="">Choose course</option>
-            {courses.map((item) => (
-              <option key={item.code} value={item.code}>
-                {item.code} — {item.title}
-              </option>
-            ))}
-          </select>
-
-          <div className="ai-library">
-            <div className="ai-library-head">
-              <h4>Course materials</h4>
-              <span>
-                {course
-                  ? libraryLoading
-                    ? "Loading…"
-                    : `${filteredLibrary.length} PDF${filteredLibrary.length === 1 ? "" : "s"}`
-                  : "Select a course"}
-              </span>
-            </div>
-
-            <div className="material-library-tabs compact" role="tablist">
+            <header className="ai-picker-head">
+              <div>
+                <h2>
+                  {pickerLibrary === "personal"
+                    ? "My Personal Uploads"
+                    : "General Materials"}
+                </h2>
+                <p>
+                  {pickerLibrary === "personal"
+                    ? "Private files uploaded by you."
+                    : "Official AgriLearn materials for your level."}
+                </p>
+              </div>
               <button
                 type="button"
-                role="tab"
-                aria-selected={materialLibrary === "official"}
-                className={`material-library-tab${materialLibrary === "official" ? " active" : ""}`}
-                onClick={() => {
-                  setMaterialLibrary("official");
-                  setSelectedNote(null);
-                }}
-                disabled={!course || loading || uploading}
+                className="ai-picker-close"
+                onClick={() => setPickerLibrary(null)}
               >
-                General
+                Close
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={materialLibrary === "personal"}
-                className={`material-library-tab${materialLibrary === "personal" ? " active" : ""}`}
-                onClick={() => {
-                  setMaterialLibrary("personal");
-                  setSelectedNote(null);
-                }}
-                disabled={!course || loading || uploading}
-              >
-                My Uploads
-              </button>
-            </div>
+            </header>
+
+            <label className="sr-only" htmlFor="ai-picker-course">
+              Course for materials
+            </label>
+            <select
+              id="ai-picker-course"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+              disabled={loading || uploading}
+            >
+              <option value="">Select a course</option>
+              {courses.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.code} — {item.title}
+                </option>
+              ))}
+            </select>
 
             {!course ? (
-              <p className="ai-library-empty">
-                Choose a course to browse official materials and your personal uploads.
+              <p className="ai-picker-empty">
+                Choose a course to browse{" "}
+                {pickerLibrary === "personal"
+                  ? "your personal uploads"
+                  : "official materials"}
+                .
               </p>
             ) : (
               <>
-                <p className="ai-library-source-label">
-                  {materialLibrary === "official"
-                    ? "General Materials — official AgriLearn PDFs"
-                    : "My Personal Uploads — private to you"}
-                </p>
-                <label className="sr-only" htmlFor="ai-library-search">
-                  Search PDFs in this course
-                </label>
                 <input
-                  id="ai-library-search"
                   type="search"
-                  className="ai-library-search"
-                  placeholder="Search titles, files, descriptions…"
+                  className="ai-picker-search"
+                  placeholder="Search titles…"
                   value={librarySearch}
                   onChange={(e) => setLibrarySearch(e.target.value)}
                   disabled={libraryLoading}
                 />
-
                 {libraryError ? (
-                  <p className="ai-library-error">{libraryError}</p>
+                  <p className="ai-picker-error">{libraryError}</p>
                 ) : null}
-
-                <div className="ai-library-list" role="list">
+                <div className="ai-picker-list" role="list">
                   {libraryLoading ? (
-                    <p className="ai-library-empty">Loading course PDFs…</p>
+                    <p className="ai-picker-empty">Loading…</p>
                   ) : filteredLibrary.length === 0 ? (
-                    <p className="ai-library-empty">
+                    <p className="ai-picker-empty">
                       {librarySearch.trim()
-                        ? "No PDFs match your search in this course."
-                        : materialLibrary === "official"
-                          ? "No official PDFs for this course yet."
-                          : "No personal uploads for this course yet. Upload below."}
+                        ? "No files match your search."
+                        : pickerLibrary === "personal"
+                          ? "No personal uploads for this course yet."
+                          : "No official materials for this course yet."}
                     </p>
                   ) : (
-                    filteredLibrary.map((note) => {
-                      const active = selectedNote?.id === note.id;
-                      return (
-                        <button
-                          key={note.id}
-                          type="button"
-                          role="listitem"
-                          className={`ai-library-item${active ? " active" : ""}`}
-                          onClick={() => selectLibraryNote(note)}
-                          disabled={loading || uploading}
-                        >
-                          <span className="ai-library-item-title">
-                            {note.title}
-                            <span className="ai-library-item-source">
-                              {note.source === "official" ? "Official" : "Personal"}
-                            </span>
-                          </span>
-                          <span className="ai-library-item-meta">
-                            {note.originalName}
-                            {note.size ? ` · ${formatBytes(note.size)}` : ""}
-                          </span>
-                          {note.description ? (
-                            <span className="ai-library-item-desc">
-                              {note.description}
-                            </span>
-                          ) : null}
-                          <span className="ai-library-item-date">
-                            {formatNoteDate(note.createdAt)}
-                            {active ? " · Selected" : ""}
-                          </span>
-                        </button>
-                      );
-                    })
+                    filteredLibrary.map((note) => (
+                      <button
+                        key={note.id}
+                        type="button"
+                        role="listitem"
+                        className="ai-picker-item"
+                        onClick={() => selectLibraryNote(note)}
+                        disabled={loading || uploading}
+                      >
+                        <strong>{note.title}</strong>
+                        <span>
+                          {note.originalName}
+                          {note.size ? ` · ${formatBytes(note.size)}` : ""}
+                          {note.createdAt
+                            ? ` · ${formatNoteDate(note.createdAt)}`
+                            : ""}
+                        </span>
+                      </button>
+                    ))
                   )}
                 </div>
               </>
             )}
           </div>
-
-          <label htmlFor="ai-pdf">Upload to My Personal Uploads (PDF, max 25 MB)</label>
-          <input
-            id="ai-pdf"
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            disabled={loading || uploading}
-            onChange={handlePdfChange}
-          />
-          {uploading && (
-            <p className="ai-upload-status">Saving to My Personal Uploads…</p>
-          )}
-          {hasPdf && (
-            <button
-              type="button"
-              className="link-btn"
-              onClick={clearPdfSelection}
-              disabled={loading || uploading}
-            >
-              Clear PDF selection
-            </button>
-          )}
-
-          <p className="ai-notice">{selectedLabel}</p>
-
-          <div className="ai-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={loading || uploading || !hasPdf}
-              onClick={() =>
-                runAction(
-                  "summarise",
-                  `Please summarise my lecture notes (${selectedLabel}). Use clear Markdown headings and bullet points.`
-                )
-              }
-            >
-              Summarise Notes
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              disabled={loading || uploading || (!course && !hasPdf)}
-              onClick={() =>
-                runAction(
-                  "quiz",
-                  `Please generate a practice quiz from ${selectedLabel}. Use Markdown with a Questions section and a separate Answer Key section.`
-                )
-              }
-            >
-              Generate Quiz
-            </button>
-            {pendingQuizCourse ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={markingQuiz || loading}
-                onClick={handleMarkQuizCompleted}
-              >
-                {markingQuiz
-                  ? "Saving…"
-                  : `Mark ${pendingQuizCourse} quiz completed`}
-              </button>
-            ) : null}
-          </div>
-        </aside>
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }
