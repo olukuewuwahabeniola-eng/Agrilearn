@@ -26,6 +26,10 @@ const {
   logCourseAccessIfNeeded,
   recordPersonalUpload,
 } = require("../utils/activityTracker");
+const {
+  isDownloadQuery,
+  setFileStreamHeaders,
+} = require("../utils/fileStreamHeaders");
 
 /**
  * GET /api/notes?library=official|personal&courseCode=&q=
@@ -297,17 +301,20 @@ async function streamNotePage(req, res, fileIndex) {
     });
   }
 
-  await logMaterialDownloadIfNeeded(req.student, note);
+  const download = isDownloadQuery(req);
+  if (download) {
+    await logMaterialDownloadIfNeeded(req.student, note);
+  } else if (fileIndex === 0) {
+    await logMaterialViewIfNeeded(req.student, note);
+  }
 
   const filename = page.originalName || note.originalName || "notes";
-  res.setHeader("Content-Type", page.mimeType || "application/octet-stream");
-  res.setHeader(
-    "Content-Disposition",
-    `inline; filename="${encodeURIComponent(filename)}"`
-  );
-  if (page.size) {
-    res.setHeader("Content-Length", String(page.size));
-  }
+  setFileStreamHeaders(res, {
+    mimeType: page.mimeType,
+    filename,
+    download,
+    size: page.size,
+  });
 
   const stream = await openStoredReadStream(page.storagePath);
   stream.on("error", (err) => {

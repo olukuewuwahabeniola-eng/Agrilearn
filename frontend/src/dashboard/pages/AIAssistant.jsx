@@ -854,7 +854,7 @@ function AIAssistant() {
             <input
               id="ai-history-search"
               type="search"
-              className="ai-history-search"
+              className="ai-history-search agri-search"
               placeholder="Search chats…"
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
@@ -984,7 +984,7 @@ function AIAssistant() {
               <>
                 <input
                   type="search"
-                  className="ai-picker-search"
+                  className="ai-picker-search agri-search"
                   placeholder="Search titles…"
                   value={librarySearch}
                   onChange={(e) => setLibrarySearch(e.target.value)}

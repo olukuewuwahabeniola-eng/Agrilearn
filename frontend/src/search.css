@@ -1,0 +1,88 @@
+/**
+ * AgriLearn search fields — typed text must stay visible.
+ * Scoped to search inputs so login/password/email fields are untouched.
+ *
+ * Root cause: Windows/macOS dark mode can paint light text into controls
+ * while page CSS still forces a white/mint background.
+ */
+
+:root {
+  --search-text: #14532d;
+  --search-placeholder: #6b7f72;
+  --search-bg: #ffffff;
+  --search-border: #d7e8dc;
+  --search-focus: #22c55e;
+  color-scheme: light;
+}
+
+html {
+  color-scheme: light;
+}
+
+input[type="search"],
+input.agri-search {
+  color: var(--search-text);
+  caret-color: var(--search-text);
+  -webkit-text-fill-color: var(--search-text);
+  background-color: var(--search-bg);
+  color-scheme: light;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+input[type="search"]::placeholder,
+input.agri-search::placeholder {
+  color: var(--search-placeholder);
+  -webkit-text-fill-color: var(--search-placeholder);
+  opacity: 1;
+}
+
+input[type="search"]::selection,
+input.agri-search::selection {
+  background: #bbf7d0;
+  color: var(--search-text);
+  -webkit-text-fill-color: var(--search-text);
+}
+
+input[type="search"]::-moz-selection,
+input.agri-search::-moz-selection {
+  background: #bbf7d0;
+  color: var(--search-text);
+}
+
+input[type="search"]:-webkit-autofill,
+input[type="search"]:-webkit-autofill:hover,
+input[type="search"]:-webkit-autofill:focus,
+input.agri-search:-webkit-autofill,
+input.agri-search:-webkit-autofill:hover,
+input.agri-search:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--search-text);
+  caret-color: var(--search-text);
+  box-shadow: inset 0 0 0 1000px var(--search-bg);
+  transition: background-color 99999s ease-out;
+}
+
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+}
+
+input[type="search"]:focus,
+input.agri-search:focus {
+  border-color: var(--search-focus);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  input[type="search"],
+  input.agri-search {
+    color: var(--search-text);
+    caret-color: var(--search-text);
+    -webkit-text-fill-color: var(--search-text);
+    background-color: var(--search-bg);
+    color-scheme: light;
+  }
+}

@@ -16,12 +16,29 @@ import {
   previewStudentDeletion,
   setStudentTestFlag,
 } from "../../utils/adminDataManagementApi";
+import AdminPageHeader from "../components/AdminPageHeader";
 
 const TABS = [
-  { id: "resources", label: "Uploaded resources" },
-  { id: "students", label: "Test student accounts" },
-  { id: "activity", label: "Testing activity" },
-  { id: "audit", label: "Cleanup audit log" },
+  {
+    id: "resources",
+    label: "Uploaded resources",
+    hint: "Notes and past questions",
+  },
+  {
+    id: "students",
+    label: "Test student accounts",
+    hint: "Mark and remove test users",
+  },
+  {
+    id: "activity",
+    label: "Testing activity",
+    hint: "Quizzes, progress and logs",
+  },
+  {
+    id: "audit",
+    label: "Cleanup audit log",
+    hint: "Recent bulk actions",
+  },
 ];
 
 function formatDate(value) {
@@ -45,6 +62,7 @@ function ConfirmPanel({
 }) {
   return (
     <div className="admin-panel admin-dm-confirm">
+      <p className="admin-composer-label">Confirmation required</p>
       <h3>{title}</h3>
       <ul className="admin-dm-summary">
         {summaryLines.map((line) => (
@@ -485,27 +503,26 @@ function AdminDataManagement() {
   };
 
   return (
-    <section>
-      <header className="admin-page-header">
-        <h1>Data Management</h1>
-        <p>
-          Safe testing cleanup for uploads, marked test accounts, and activity
-          records. Administrator accounts and unmarked students are protected.
-        </p>
-      </header>
+    <section className="admin-mgmt">
+      <AdminPageHeader title="Data Management">
+        Organised tools for testing cleanup: uploaded resources, marked test
+        accounts, activity records, and an audit trail. Administrator accounts
+        and unmarked students stay protected.
+      </AdminPageHeader>
 
-      <div className="admin-act-filter-pills" style={{ marginBottom: "1rem" }}>
+      <nav className="admin-tabs" aria-label="Data management sections">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
-            className={tab === item.id ? "active" : ""}
+            className={`admin-tab${tab === item.id ? " active" : ""}`}
             onClick={() => setTab(item.id)}
           >
-            {item.label}
+            <span className="admin-tab-label">{item.label}</span>
+            <span className="admin-tab-hint">{item.hint}</span>
           </button>
         ))}
-      </div>
+      </nav>
 
       {error ? <p className="admin-form-error">{error}</p> : null}
       {status ? <p className="admin-form-success">{status}</p> : null}
@@ -513,6 +530,20 @@ function AdminDataManagement() {
       {tab === "resources" ? (
         <>
           <div className="admin-panel">
+            <div className="admin-panel-head">
+              <div>
+                <h2>Uploaded resources</h2>
+                <p className="admin-panel-lede">
+                  Find lecture notes and past questions, export a copy, then
+                  delete only the selected files after typing DELETE.
+                </p>
+              </div>
+              <span className="admin-count">
+                {resLoading
+                  ? "Loading…"
+                  : `${resources.length} item${resources.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
             <div className="admin-toolbar">
               <div className="admin-field">
                 <label htmlFor="dm-res-type">Resource type</label>
@@ -527,7 +558,7 @@ function AdminDataManagement() {
                   <option value="past_question">Past questions</option>
                 </select>
               </div>
-              <div className="admin-field" style={{ maxWidth: 140 }}>
+              <div className="admin-field admin-field-sm">
                 <label htmlFor="dm-res-level">Level</label>
                 <select
                   id="dm-res-level"
@@ -541,7 +572,7 @@ function AdminDataManagement() {
                   <option value="500">500</option>
                 </select>
               </div>
-              <div className="admin-field" style={{ maxWidth: 140 }}>
+              <div className="admin-field admin-field-sm">
                 <label htmlFor="dm-res-course">Course</label>
                 <input
                   id="dm-res-course"
@@ -555,6 +586,7 @@ function AdminDataManagement() {
                 <input
                   id="dm-res-q"
                   type="search"
+                  className="agri-search"
                   value={resQ}
                   onChange={(e) => setResQ(e.target.value)}
                   placeholder="Title or course…"
@@ -562,29 +594,37 @@ function AdminDataManagement() {
               </div>
             </div>
 
-            <div className="admin-dm-actions" style={{ marginBottom: "0.85rem" }}>
-              <button
-                type="button"
-                className="admin-btn admin-btn-outline"
-                onClick={runResourceExport}
-                disabled={busy || !selectedResources.size}
-              >
-                Export selected
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn-danger"
-                onClick={beginResourceDelete}
-                disabled={busy || !selectedResources.size}
-              >
-                Preview & delete selected
-              </button>
+            <div className="admin-toolbar-split">
+              <p className="admin-muted" style={{ margin: 0 }}>
+                {selectedResources.size
+                  ? `${selectedResources.size} selected`
+                  : "Select rows to export or delete."}
+              </p>
+              <div className="admin-dm-actions">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-outline"
+                  onClick={runResourceExport}
+                  disabled={busy || !selectedResources.size}
+                >
+                  Export selected
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-danger"
+                  onClick={beginResourceDelete}
+                  disabled={busy || !selectedResources.size}
+                >
+                  Preview & delete selected
+                </button>
+              </div>
             </div>
 
-            {resLoading ? <p className="admin-muted">Loading resources…</p> : null}
+            {resLoading ? <p className="admin-loading">Loading resources…</p> : null}
 
             {!resLoading && !resources.length ? (
               <div className="admin-empty">
+                <div className="admin-empty-icon" aria-hidden="true" />
                 <strong>No resources found</strong>
                 Adjust filters or upload materials first.
               </div>
@@ -595,7 +635,7 @@ function AdminDataManagement() {
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>
+                      <th className="admin-col-check">
                         <input
                           type="checkbox"
                           checked={
@@ -626,17 +666,31 @@ function AdminDataManagement() {
                               aria-label={`Select ${row.title}`}
                             />
                           </td>
-                          <td>{row.title}</td>
                           <td>
-                            {row.resourceType === "official_note"
-                              ? "Official note"
-                              : row.resourceType === "personal_note"
-                                ? "Personal upload"
-                                : "Past question"}{" "}
-                            · {row.fileType}
+                            <div className="admin-cell-primary">{row.title}</div>
+                          </td>
+                          <td>
+                            <span
+                              className={`admin-type-badge${
+                                row.resourceType === "personal_note"
+                                  ? " personal"
+                                  : row.resourceType === "past_question"
+                                    ? " past-question"
+                                    : ""
+                              }`}
+                            >
+                              {row.resourceType === "official_note"
+                                ? "Official note"
+                                : row.resourceType === "personal_note"
+                                  ? "Personal upload"
+                                  : "Past question"}
+                            </span>
+                            <div className="admin-cell-sub">{row.fileType}</div>
                           </td>
                           <td>{row.courseCode}</td>
-                          <td>{row.level}</td>
+                          <td>
+                            <span className="admin-badge">{row.level}</span>
+                          </td>
                           <td>{formatDate(row.createdAt)}</td>
                         </tr>
                       );
@@ -670,22 +724,33 @@ function AdminDataManagement() {
       {tab === "students" ? (
         <>
           <div className="admin-panel">
-            <p className="admin-muted" style={{ marginBottom: "0.85rem" }}>
-              Accounts are never treated as test data automatically. Mark an
-              account as a test account before it can be removed.
-            </p>
+            <div className="admin-panel-head">
+              <div>
+                <h2>Test student accounts</h2>
+                <p className="admin-panel-lede">
+                  Accounts are never treated as test data automatically. Mark an
+                  account as a test account before it can be removed.
+                </p>
+              </div>
+              <span className="admin-count">
+                {stuLoading
+                  ? "Loading…"
+                  : `${students.length} account${students.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
             <div className="admin-toolbar">
               <div className="admin-field">
                 <label htmlFor="dm-stu-q">Search</label>
                 <input
                   id="dm-stu-q"
                   type="search"
+                  className="agri-search"
                   value={stuQ}
                   onChange={(e) => setStuQ(e.target.value)}
                   placeholder="Name or email…"
                 />
               </div>
-              <div className="admin-field" style={{ maxWidth: 140 }}>
+              <div className="admin-field admin-field-sm">
                 <label htmlFor="dm-stu-level">Level</label>
                 <select
                   id="dm-stu-level"
@@ -709,38 +774,53 @@ function AdminDataManagement() {
               </label>
             </div>
 
-            <div className="admin-dm-actions" style={{ marginBottom: "0.85rem" }}>
-              <button
-                type="button"
-                className="admin-btn admin-btn-outline"
-                onClick={runStudentExport}
-                disabled={busy || !selectedStudents.size}
-              >
-                Export selected
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn-danger"
-                onClick={beginStudentDelete}
-                disabled={busy || !selectedStudents.size}
-              >
-                Preview & remove test accounts
-              </button>
+            <div className="admin-toolbar-split">
+              <p className="admin-muted" style={{ margin: 0 }}>
+                {selectedStudents.size
+                  ? `${selectedStudents.size} test account${selectedStudents.size === 1 ? "" : "s"} selected`
+                  : "Only marked test accounts can be selected for removal."}
+              </p>
+              <div className="admin-dm-actions">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-outline"
+                  onClick={runStudentExport}
+                  disabled={busy || !selectedStudents.size}
+                >
+                  Export selected
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-danger"
+                  onClick={beginStudentDelete}
+                  disabled={busy || !selectedStudents.size}
+                >
+                  Preview & remove test accounts
+                </button>
+              </div>
             </div>
 
-            {stuLoading ? <p className="admin-muted">Loading students…</p> : null}
+            {stuLoading ? <p className="admin-loading">Loading students…</p> : null}
+
+            {!stuLoading && !students.length ? (
+              <div className="admin-empty">
+                <div className="admin-empty-icon" aria-hidden="true" />
+                <strong>No students found</strong>
+                Try a different search, level, or test-account filter.
+              </div>
+            ) : null}
 
             {students.length ? (
               <div className="admin-table-wrap">
                 <table className="admin-table">
                   <thead>
                     <tr>
-                      <th>Select</th>
+                      <th className="admin-col-check">Select</th>
                       <th>Student</th>
                       <th>Level</th>
                       <th>Test account</th>
                       <th>Related records</th>
-                      <th>Actions</th>
+                      <th className="admin-col-actions">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -758,16 +838,24 @@ function AdminDataManagement() {
                             />
                           </td>
                           <td>
-                            <strong>{student.fullName}</strong>
-                            <div className="admin-muted">{student.email}</div>
+                            <div className="admin-cell-primary">{student.fullName}</div>
+                            <div className="admin-cell-sub">{student.email}</div>
                           </td>
-                          <td>{student.level}</td>
-                          <td>{student.isTestAccount ? "Yes" : "No"}</td>
-                          <td>{student.related?.total ?? 0}</td>
                           <td>
+                            <span className="admin-badge">{student.level}</span>
+                          </td>
+                          <td>
+                            <span
+                              className={`admin-badge${student.isTestAccount ? "" : " admin-badge-draft"}`}
+                            >
+                              {student.isTestAccount ? "Test" : "Protected"}
+                            </span>
+                          </td>
+                          <td>{student.related?.total ?? 0}</td>
+                          <td className="admin-col-actions">
                             <button
                               type="button"
-                              className="admin-link-btn"
+                              className="admin-btn admin-btn-outline admin-btn-compact"
                               disabled={busy || student.isAdminEmail}
                               onClick={() =>
                                 handleTestFlag(student, !student.isTestAccount)
@@ -810,11 +898,16 @@ function AdminDataManagement() {
       {tab === "activity" ? (
         <>
           <div className="admin-panel">
-            <p className="admin-muted" style={{ marginBottom: "0.85rem" }}>
-              Clears quiz attempts, learning progress, and activity history for
-              marked test accounts only. Course catalogs and unmarked students
-              stay intact.
-            </p>
+            <div className="admin-panel-head">
+              <div>
+                <h2>Testing activity</h2>
+                <p className="admin-panel-lede">
+                  Clears quiz attempts, learning progress, and activity history
+                  for marked test accounts only. Course catalogs and unmarked
+                  students stay intact.
+                </p>
+              </div>
+            </div>
 
             {actStats ? (
               <div className="admin-dm-stats">
@@ -968,13 +1061,26 @@ function AdminDataManagement() {
 
       {tab === "audit" ? (
         <div className="admin-panel">
-          <p className="admin-muted" style={{ marginBottom: "0.85rem" }}>
-            Recent bulk cleanup actions for accountability.
-          </p>
-          {auditLoading ? <p className="admin-muted">Loading audit log…</p> : null}
+          <div className="admin-panel-head">
+            <div>
+              <h2>Cleanup audit log</h2>
+              <p className="admin-panel-lede">
+                Recent bulk cleanup actions for accountability. These records
+                are not student learning data.
+              </p>
+            </div>
+            <span className="admin-count">
+              {auditLoading
+                ? "Loading…"
+                : `${auditLogs.length} event${auditLogs.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+          {auditLoading ? <p className="admin-loading">Loading audit log…</p> : null}
           {!auditLoading && !auditLogs.length ? (
             <div className="admin-empty">
+              <div className="admin-empty-icon" aria-hidden="true" />
               <strong>No cleanup actions logged yet</strong>
+              Audit entries appear after a confirmed bulk delete or activity clear.
             </div>
           ) : null}
           {auditLogs.length ? (
@@ -992,8 +1098,12 @@ function AdminDataManagement() {
                   {auditLogs.map((log) => (
                     <tr key={log.id}>
                       <td>{formatDate(log.createdAt)}</td>
-                      <td>{log.adminEmail}</td>
-                      <td>{log.action}</td>
+                      <td>
+                        <div className="admin-cell-primary">{log.adminEmail}</div>
+                      </td>
+                      <td>
+                        <span className="admin-type-badge">{log.action}</span>
+                      </td>
                       <td>{log.summary}</td>
                     </tr>
                   ))}

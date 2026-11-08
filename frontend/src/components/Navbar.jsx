@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { LOGIN_SELECTION_PATH } from "../utils/authNavigation";
 import "./Navbar.css";
 
 const LINKS = [
@@ -77,7 +78,7 @@ function Navbar() {
         </nav>
 
         <div className="nav-actions">
-          <Link to="/login" className="btn btn-outline">
+          <Link to={LOGIN_SELECTION_PATH} className="btn btn-outline">
             Log In
           </Link>
           <Link to="/signup" className="btn btn-primary">

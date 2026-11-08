@@ -286,6 +286,7 @@ function AdminActivity() {
             <input
               id="act-student-q"
               type="search"
+              className="agri-search"
               placeholder="Name or email…"
               value={studentQ}
               onChange={(e) => setStudentQ(e.target.value)}

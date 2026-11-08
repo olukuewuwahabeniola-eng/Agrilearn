@@ -1,7 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { adminFetch } from "../../utils/adminApi";
+import AdminPageHeader from "../components/AdminPageHeader";
 import { useAdminLevel } from "../AdminLevelContext";
+
+function formatJoined(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
+  }
+}
 
 function AdminStudents() {
   const { isSuperAdmin, selectedLevel, setSelectedLevel, levels } =
@@ -37,29 +51,41 @@ function AdminStudents() {
   }, [q, level]);
 
   return (
-    <section>
-      <header className="admin-page-header">
-        <h1>Manage Students</h1>
-        <p>
-          {isSuperAdmin
-            ? "View registered AgriLearn student accounts (read-only)."
-            : `View ${level || "assigned"} Level student accounts (read-only).`}
-        </p>
-      </header>
+    <section className="admin-mgmt">
+      <AdminPageHeader title="Manage Students">
+        {isSuperAdmin
+          ? "Review registered AgriLearn student accounts. Search by name, email or matric number, then open a record for full details."
+          : `Review ${level || "assigned"} Level student accounts. Search by name, email or matric number, then open a record for full details.`}
+      </AdminPageHeader>
 
       <div className="admin-panel">
+        <div className="admin-panel-head">
+          <div>
+            <h2>Student directory</h2>
+            <p className="admin-panel-lede">
+              {isSuperAdmin
+                ? "Super Admin can browse every academic level. Passwords are never shown."
+                : "Level Admin access is limited to your assigned academic level. Passwords are never shown."}
+            </p>
+          </div>
+          <span className="admin-count">
+            {loading ? "Loading…" : `${students.length} student${students.length === 1 ? "" : "s"}`}
+          </span>
+        </div>
+
         <div className="admin-toolbar">
           <div className="admin-field">
             <label htmlFor="student-q">Search</label>
             <input
               id="student-q"
               type="search"
+              className="agri-search"
               placeholder="Name, email, or matric…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <div className="admin-field" style={{ maxWidth: 160 }}>
+          <div className="admin-field admin-field-sm">
             <label htmlFor="student-level">Level</label>
             {isSuperAdmin ? (
               <select
@@ -70,7 +96,7 @@ function AdminStudents() {
                 <option value="">All levels</option>
                 {levels.map((lvl) => (
                   <option key={lvl} value={lvl}>
-                    {lvl}
+                    {lvl} Level
                   </option>
                 ))}
               </select>
@@ -86,10 +112,11 @@ function AdminStudents() {
         </div>
 
         {error ? <p className="admin-form-error">{error}</p> : null}
-        {loading ? <p className="admin-muted">Loading students…</p> : null}
+        {loading ? <p className="admin-loading">Loading students…</p> : null}
 
         {!loading && !students.length ? (
           <div className="admin-empty">
+            <div className="admin-empty-icon" aria-hidden="true" />
             <strong>No students found</strong>
             Try a different search or level filter.
           </div>
@@ -100,30 +127,34 @@ function AdminStudents() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
+                  <th>Student</th>
                   <th>Matric</th>
                   <th>Level</th>
-                  <th></th>
+                  <th>Registered</th>
+                  <th className="admin-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {students.map((s) => (
                   <tr key={s._id}>
-                    <td>{s.fullName}</td>
-                    <td>{s.email}</td>
-                    <td>{s.matricNumber}</td>
+                    <td>
+                      <div className="admin-cell-primary">{s.fullName}</div>
+                      <div className="admin-cell-sub">{s.email}</div>
+                    </td>
+                    <td>{s.matricNumber || "—"}</td>
                     <td>
                       <span className="admin-badge">{s.level}</span>
                     </td>
-                    <td>
-                      <Link
-                        to={`/admin/students/${s._id}`}
-                        className="admin-link-btn"
-                        style={{ color: "#166534" }}
-                      >
-                        View
-                      </Link>
+                    <td>{formatJoined(s.createdAt)}</td>
+                    <td className="admin-col-actions">
+                      <div className="admin-file-actions">
+                        <Link
+                          to={`/admin/students/${s._id}`}
+                          className="admin-btn admin-btn-ghost admin-btn-compact"
+                        >
+                          View
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -1,11 +1,13 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useAdminAuth } from "./AdminAuthContext";
 import { AdminLevelProvider, useAdminLevel } from "./AdminLevelContext";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const NAV = [
   { to: "/admin", end: true, label: "Overview" },
   { to: "/admin/students", label: "Manage Students" },
+  { to: "/admin/community", label: "Community" },
   { to: "/admin/courses", label: "Manage Courses" },
   { to: "/admin/notes", label: "Upload Notes & Resources" },
   { to: "/admin/past-questions", label: "Manage Past Questions" },
@@ -59,6 +61,7 @@ function AdminLevelSwitcher() {
 function AdminLayoutInner() {
   const { admin, logout } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const isSuper = Boolean(
     admin?.isSuperAdmin || admin?.role === "super_admin" || admin?.role === "admin"
@@ -70,6 +73,10 @@ function AdminLayoutInner() {
   };
 
   const navItems = NAV.filter((item) => !item.superOnly || isSuper);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   const roleLabel = isSuper
     ? "Super Admin"
@@ -137,7 +144,9 @@ function AdminLayoutInner() {
           <AdminLevelSwitcher />
         </header>
         <main className="admin-content">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

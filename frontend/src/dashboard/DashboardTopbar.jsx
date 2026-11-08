@@ -6,6 +6,7 @@ import {
   getDashboardOverview,
 } from "../utils/dashboardApi";
 import { getInitials } from "./data/courses";
+import CommunityAvatar from "./components/community/CommunityAvatar";
 import { useDashboardBase } from "./hooks/useDashboardBase";
 
 function studentKey(student) {
@@ -142,6 +143,7 @@ function DashboardTopbar({ onMenuToggle }) {
         </svg>
         <input
           type="search"
+          className="agri-search"
           placeholder="Search courses, notes, or topics..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -219,7 +221,16 @@ function DashboardTopbar({ onMenuToggle }) {
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
           >
-            <span className="dash-avatar">{getInitials(student?.fullName)}</span>
+            {student?.hasAvatar || student?.avatar?.hasAvatar ? (
+              <CommunityAvatar
+                studentId={studentKey(student)}
+                name={student?.fullName}
+                hasAvatar
+                className="dash-avatar"
+              />
+            ) : (
+              <span className="dash-avatar">{getInitials(student?.fullName)}</span>
+            )}
             <span className="dash-profile-text">
               <strong>{student?.fullName || "Student"}</strong>
               <span>

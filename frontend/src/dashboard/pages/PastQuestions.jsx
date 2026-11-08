@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import { useLevelCourses } from "../hooks/useLevelCourses";
+import DocumentViewer from "../../components/pdf/DocumentViewer";
 import {
   downloadPastQuestionFile,
-  fetchPastQuestionFileBlob,
+  fetchPastQuestionPreviewUrls,
   formatPastQuestionDate,
   listPastQuestions,
 } from "../../utils/pastQuestionsApi";
@@ -72,11 +73,7 @@ function PastQuestions() {
     previewUrls.forEach((url) => URL.revokeObjectURL(url));
     setPreviewUrls([]);
     try {
-      const urls = [];
-      for (let i = 0; i < item.pageCount; i += 1) {
-        const blob = await fetchPastQuestionFileBlob(item.id, i);
-        urls.push(URL.createObjectURL(blob));
-      }
+      const urls = await fetchPastQuestionPreviewUrls(item);
       setPreviewUrls(urls);
     } catch (err) {
       setStatus(err.message || "Could not load preview.");
@@ -133,6 +130,7 @@ function PastQuestions() {
           <input
             id="pq-search"
             type="search"
+            className="agri-search"
             placeholder="e.g. AEF501"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -188,17 +186,17 @@ function PastQuestions() {
               ) : null}
               <div className="notes-card-actions">
                 <span>{formatPastQuestionDate(item.createdAt)}</span>
-                <div>
+                <div className="file-actions">
                   <button
                     type="button"
-                    className="link-btn"
+                    className="link-btn file-action-btn"
                     onClick={() => openPreview(item)}
                   >
-                    Preview
+                    View
                   </button>
                   <button
                     type="button"
-                    className="link-btn"
+                    className="link-btn file-action-btn"
                     onClick={() => handleDownloadAll(item)}
                   >
                     Download
@@ -210,74 +208,22 @@ function PastQuestions() {
         </ul>
       )}
 
-      {preview ? (
-        <div
-          className="pq-preview-backdrop"
-          role="presentation"
-          onClick={closePreview}
-        >
-          <div
-            className="pq-preview-modal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header className="pq-preview-head">
-              <div>
-                <h2>
-                  {preview.courseCode} · {preview.examYear}
-                </h2>
-                <p className="muted">
-                  {preview.courseTitle} · {preview.fileType}
-                  {preview.pageCount > 1
-                    ? ` · ${preview.pageCount} pages`
-                    : ""}
-                </p>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={closePreview}>
-                Close
-              </button>
-            </header>
-
-            {previewLoading ? (
-              <p className="notes-status">Loading preview…</p>
-            ) : null}
-
-            {!previewLoading && preview.format === "pdf" && previewUrls[0] ? (
-              <iframe
-                title={`${preview.courseCode} past question PDF`}
-                className="pq-preview-pdf"
-                src={previewUrls[0]}
-              />
-            ) : null}
-
-            {!previewLoading && preview.format === "images" ? (
-              <div className="pq-preview-gallery">
-                {previewUrls.map((url, index) => (
-                  <figure key={url}>
-                    <img
-                      src={url}
-                      alt={`${preview.courseCode} page ${index + 1}`}
-                      loading="lazy"
-                    />
-                    <figcaption>Page {index + 1}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            ) : null}
-
-            <footer className="pq-preview-foot">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handleDownloadAll(preview)}
-              >
-                Download {preview.format === "images" ? "all pages" : "PDF"}
-              </button>
-            </footer>
-          </div>
-        </div>
-      ) : null}
+      <DocumentViewer
+        open={Boolean(preview)}
+        title={preview ? `${preview.courseCode} · ${preview.examYear}` : ""}
+        subtitle={
+          preview
+            ? `${preview.courseTitle || ""} · ${preview.fileType}${
+                preview.pageCount > 1 ? ` · ${preview.pageCount} pages` : ""
+              }`
+            : ""
+        }
+        format={preview?.format === "images" ? "images" : "pdf"}
+        urls={previewUrls}
+        loading={previewLoading}
+        onClose={closePreview}
+        onDownload={() => preview && handleDownloadAll(preview)}
+      />
     </section>
   );
 }

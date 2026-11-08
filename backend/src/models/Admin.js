@@ -82,6 +82,21 @@ const adminSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    passwordResetTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    passwordResetRequestedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   { timestamps: true }
 );
@@ -106,6 +121,9 @@ function sanitizeAdmin(doc) {
   delete obj.password;
   delete obj.__v;
   delete obj.inviteTokenHash;
+  delete obj.passwordResetTokenHash;
+  delete obj.passwordResetExpiresAt;
+  delete obj.passwordResetRequestedAt;
   // Normalize legacy role for API consumers
   if (obj.role === "admin") obj.role = "super_admin";
   obj.isSuperAdmin = obj.role === "super_admin";

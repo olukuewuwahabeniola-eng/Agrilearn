@@ -21,6 +21,7 @@ const {
   uploadBuffer,
   destroyCloudinaryAsset,
 } = require("./cloudinary");
+const { assertFileSignature } = require("./fileSignature");
 
 const ALLOWED_MIMES = new Set([
   "application/pdf",
@@ -96,6 +97,7 @@ async function savePastQuestionFile({
   }
 
   validateFileSize(buffer, normalizedMime);
+  assertFileSignature(buffer, normalizedMime);
 
   if (!isCloudinaryConfigured()) {
     const error = new Error(

@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { resolvePostLoginPath } from "../dashboard/levelPaths";
 import { validateLogin } from "../utils/authValidation";
 import { apiFetch } from "../utils/api";
+import { LOGIN_SELECTION_PATH } from "../utils/authNavigation";
 
 const INITIAL = {
   identifier: "",
@@ -74,7 +75,7 @@ function Login() {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout backTo={LOGIN_SELECTION_PATH} backLabel="Back">
       <span className="auth-badge">Welcome back</span>
       <h1>Log in to AgriLearn</h1>
       <p className="auth-lead">
@@ -115,6 +116,9 @@ function Login() {
             disabled={loading}
           />
           {errors.password && <p className="field-error">{errors.password}</p>}
+          <p className="auth-forgot">
+            <Link to="/forgot-password">Forgot password?</Link>
+          </p>
         </div>
 
         {formError && (

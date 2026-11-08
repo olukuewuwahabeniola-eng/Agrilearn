@@ -49,6 +49,41 @@ export function validateSignUp(values) {
   return errors;
 }
 
+export function validateForgotPasswordEmail(email) {
+  const errors = {};
+  const value = String(email || "").trim();
+  if (!value) {
+    errors.email = "Please enter the email address for your account.";
+  } else if (!isValidEmail(value)) {
+    errors.email = "Please enter a valid email address.";
+  }
+  return errors;
+}
+
+export function validateResetPassword(values, { requireLetterAndNumber = false } = {}) {
+  const errors = {};
+  const password = String(values.password || "");
+  const confirmPassword = String(values.confirmPassword || "");
+
+  if (!password) {
+    errors.password = "Please create a new password.";
+  } else if (password.length < 8) {
+    errors.password = "Password must be at least 8 characters.";
+  } else if (password.length > 128) {
+    errors.password = "Password must be at most 128 characters.";
+  } else if (requireLetterAndNumber && (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password))) {
+    errors.password = "Password must include at least one letter and one number.";
+  }
+
+  if (!confirmPassword) {
+    errors.confirmPassword = "Please confirm your new password.";
+  } else if (password !== confirmPassword) {
+    errors.confirmPassword = "Passwords do not match.";
+  }
+
+  return errors;
+}
+
 export function validateLogin(values) {
   const errors = {};
 

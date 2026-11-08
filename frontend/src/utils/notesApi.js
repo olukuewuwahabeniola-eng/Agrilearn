@@ -1,4 +1,5 @@
 import { apiFetch, getApiBaseUrl, getToken } from "./api";
+import { objectUrlForBlob, typedBlob } from "./fileBlobs";
 import { uploadFormWithProgress } from "./uploadFormWithProgress";
 
 /**
@@ -92,16 +93,17 @@ export async function deleteNote(noteId) {
   });
 }
 
-export function notePageFileUrl(noteId, fileIndex = 0) {
-  return `${getApiBaseUrl()}/api/notes/${noteId}/files/${fileIndex}/file`;
+export function notePageFileUrl(noteId, fileIndex = 0, { download = false } = {}) {
+  const suffix = download ? "?download=1" : "";
+  if (fileIndex > 0) {
+    return `${getApiBaseUrl()}/api/notes/${noteId}/files/${fileIndex}/file${suffix}`;
+  }
+  return `${getApiBaseUrl()}/api/notes/${noteId}/file${suffix}`;
 }
 
-export async function fetchNotePageBlob(noteId, fileIndex = 0) {
+export async function fetchNotePageBlob(noteId, fileIndex = 0, { download = false } = {}) {
   const token = getToken();
-  const url =
-    fileIndex > 0
-      ? notePageFileUrl(noteId, fileIndex)
-      : `${getApiBaseUrl()}/api/notes/${noteId}/file`;
+  const url = notePageFileUrl(noteId, fileIndex, { download });
   const response = await fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
@@ -117,7 +119,9 @@ export async function fetchNotePageBlob(noteId, fileIndex = 0) {
     throw new Error(message);
   }
 
-  return response.blob();
+  const blob = await response.blob();
+  const mime = response.headers.get("Content-Type") || blob.type;
+  return typedBlob(blob, mime);
 }
 
 export async function fetchNoteFileBlob(noteId) {
@@ -131,9 +135,13 @@ export async function fetchNotePreviewUrls(note) {
       (Array.isArray(note?.files) ? note.files.length : 1)
   );
   const urls = [];
+  const mime =
+    note?.format === "images" || note?.fileType === "Images"
+      ? undefined
+      : "application/pdf";
   for (let index = 0; index < count; index += 1) {
     const blob = await fetchNotePageBlob(note.id, index);
-    urls.push(URL.createObjectURL(blob));
+    urls.push(objectUrlForBlob(blob, mime || blob.type));
   }
   return urls;
 }
@@ -150,7 +158,7 @@ function triggerDownload(blob, filename) {
 }
 
 export async function downloadNoteFile(noteId, filename = "notes.pdf") {
-  const blob = await fetchNoteFileBlob(noteId);
+  const blob = await fetchNotePageBlob(noteId, 0, { download: true });
   triggerDownload(blob, filename);
 }
 
@@ -166,7 +174,7 @@ export async function downloadNote(note) {
   }
 
   for (let index = 0; index < pages.length; index += 1) {
-    const blob = await fetchNotePageBlob(note.id, index);
+    const blob = await fetchNotePageBlob(note.id, index, { download: true });
     triggerDownload(
       blob,
       pages[index]?.originalName || `page-${index + 1}.jpg`

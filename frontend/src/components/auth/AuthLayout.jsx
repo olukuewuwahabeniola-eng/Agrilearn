@@ -30,7 +30,36 @@ function Logo() {
   );
 }
 
-function AuthLayout({ children, wide = false }) {
+function AuthBack({ backTo, backLabel, onBack }) {
+  const label = (
+    <>
+      <span aria-hidden="true">←</span> {backLabel}
+    </>
+  );
+
+  if (onBack) {
+    return (
+      <button type="button" className="auth-back" onClick={onBack}>
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <Link to={backTo} className="auth-back">
+      {label}
+    </Link>
+  );
+}
+
+function AuthLayout({
+  children,
+  wide = false,
+  framed = true,
+  backTo = "/",
+  backLabel = "Back to Home",
+  onBack,
+}) {
   const year = new Date().getFullYear();
 
   return (
@@ -38,17 +67,19 @@ function AuthLayout({ children, wide = false }) {
       <header className="auth-header">
         <div className="container auth-header-inner">
           <Logo />
-          <Link to="/" className="auth-back">
-            <span aria-hidden="true">←</span> Back to Home
-          </Link>
+          <AuthBack backTo={backTo} backLabel={backLabel} onBack={onBack} />
         </div>
       </header>
 
       <main className="auth-main">
         <div className="container">
-          <div className={`auth-card${wide ? " auth-card-wide" : ""}`}>
-            {children}
-          </div>
+          {framed ? (
+            <div className={`auth-card${wide ? " auth-card-wide" : ""}`}>
+              {children}
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </main>
 

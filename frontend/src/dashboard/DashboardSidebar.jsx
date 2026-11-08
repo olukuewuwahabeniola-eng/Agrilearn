@@ -6,6 +6,7 @@ function buildNav(base) {
     { to: base, label: "Dashboard", end: true, icon: "home" },
     { to: `${base}/courses`, label: "My Courses", icon: "courses" },
     { to: `${base}/notes`, label: "Notes & Resources", icon: "notes" },
+    { to: `${base}/community`, label: "Community", icon: "community" },
     { to: `${base}/past-questions`, label: "Past Questions", icon: "past" },
     { to: `${base}/quizzes`, label: "Quizzes", icon: "quiz" },
     { to: `${base}/ai-assistant`, label: "AI Assistant", icon: "ai" },
@@ -40,6 +41,13 @@ function NavIcon({ type }) {
         <svg {...common}>
           <path d="M7 3h8l4 4v14H7V3z" />
           <path d="M15 3v4h4M9 12h6M9 16h4" strokeLinecap="round" />
+        </svg>
+      );
+    case "community":
+      return (
+        <svg {...common}>
+          <path d="M4 6h12v8H8l-4 3V6z" />
+          <path d="M10 10h8v8h-5l-3 2v-10z" />
         </svg>
       );
     case "past":

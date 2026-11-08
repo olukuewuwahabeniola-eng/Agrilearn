@@ -434,6 +434,7 @@ function AdminAdministrators() {
             <input
               id="adm-q"
               type="search"
+              className="agri-search"
               placeholder="Name or email…"
               value={q}
               onChange={(e) => setQ(e.target.value)}

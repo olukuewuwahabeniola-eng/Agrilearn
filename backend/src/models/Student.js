@@ -53,6 +53,47 @@ const studentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    avatar: {
+      storagePath: { type: String, default: null, trim: true },
+      mimeType: { type: String, default: null, trim: true },
+      originalName: { type: String, default: null, trim: true },
+      size: { type: Number, default: 0, min: 0 },
+    },
+    communityRestricted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    communityRestrictedAt: {
+      type: Date,
+      default: null,
+    },
+    communityRestrictedReason: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 400,
+    },
+    communityRestrictedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Admin",
+      default: null,
+    },
+    passwordResetTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    passwordResetRequestedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
     /**
      * Admin-controlled flag for testing cleanup.
      * Never auto-set — only an administrator may mark/unmark.
@@ -70,7 +111,18 @@ function sanitizeStudent(doc) {
   if (!doc) return null;
   const obj = doc.toObject ? doc.toObject() : { ...doc };
   delete obj.password;
+  delete obj.passwordResetTokenHash;
+  delete obj.passwordResetExpiresAt;
+  delete obj.passwordResetRequestedAt;
   delete obj.__v;
+  const avatarPath = obj.avatar?.storagePath || null;
+  obj.hasAvatar = Boolean(avatarPath);
+  obj.avatar = {
+    hasAvatar: Boolean(avatarPath),
+    mimeType: obj.avatar?.mimeType || null,
+  };
+  obj.communityRestricted = Boolean(obj.communityRestricted);
+  delete obj.communityRestrictedBy;
   return obj;
 }
 

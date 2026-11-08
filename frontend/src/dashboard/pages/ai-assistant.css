@@ -473,7 +473,8 @@
   left: 0;
   top: auto;
   bottom: calc(100% + 0.55rem);
-  width: min(280px, calc(100vw - 2rem));
+  width: min(280px, calc(100% - 1.5rem));
+  max-width: min(280px, calc(100dvw - 1.5rem));
   background: #fff;
   border: 1px solid #eef2f0;
   border-radius: 16px;
@@ -619,6 +620,17 @@
   padding: 0.65rem 0.75rem;
   font: inherit;
   margin-bottom: 0.65rem;
+  color: #14532d;
+  caret-color: #14532d;
+  -webkit-text-fill-color: #14532d;
+  background: #ffffff;
+  color-scheme: light;
+}
+
+.ai-history-search::placeholder {
+  color: #6b7f72;
+  -webkit-text-fill-color: #6b7f72;
+  opacity: 1;
 }
 
 .ai-history-list {
@@ -754,7 +766,16 @@
   margin-bottom: 0.6rem;
   font: inherit;
   color: #14532d;
+  caret-color: #14532d;
+  -webkit-text-fill-color: #14532d;
   background: #fff;
+  color-scheme: light;
+}
+
+.ai-picker-search::placeholder {
+  color: #6b7f72;
+  -webkit-text-fill-color: #6b7f72;
+  opacity: 1;
 }
 
 .ai-picker-list {
@@ -830,7 +851,7 @@
   }
 
   .ai-composer-dock {
-    padding: 0.3rem 0.65rem 0.85rem;
+    padding: 0.3rem 0.65rem max(0.85rem, env(safe-area-inset-bottom));
   }
 
   .ai-center-composer,
@@ -849,7 +870,8 @@
   }
 
   .ai-plus-menu {
-    width: min(280px, calc(100vw - 1.5rem));
+    width: min(280px, calc(100% - 1rem));
+    max-width: min(280px, calc(100dvw - 1.5rem));
   }
 
   .ai-history-panel {

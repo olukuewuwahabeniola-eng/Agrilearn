@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import DocumentViewer from "../../components/pdf/DocumentViewer";
+import { useDocumentPreview } from "../../hooks/useDocumentPreview";
 import { adminFetch } from "../../utils/adminApi";
 import {
   createAdminPastQuestion,
   deleteAdminPastQuestion,
+  downloadAdminPastQuestion,
+  fetchAdminPastQuestionPreviewUrls,
   listAdminPastQuestions,
   replaceAdminPastQuestionFiles,
   updateAdminPastQuestion,
 } from "../../utils/adminPastQuestionsApi";
 import { formatNoteDate } from "../../utils/notesApi";
 import { validateImageFiles, validatePdfFile } from "../../utils/uploadLimits";
+import AdminPageHeader from "../components/AdminPageHeader";
 import { useAdminLevel } from "../AdminLevelContext";
 
 function AdminPastQuestions() {
@@ -41,6 +46,7 @@ function AdminPastQuestions() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const preview = useDocumentPreview();
 
   const [editItem, setEditItem] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -267,21 +273,31 @@ function AdminPastQuestions() {
   };
 
   return (
-    <section>
-      <header className="admin-page-header">
-        <h1>Manage Past Questions</h1>
-        <p>
-          Upload examination papers as PDFs or photographed pages. Group multiple
-          images as one paper — not a quiz or manual question entry tool.
-        </p>
-      </header>
+    <section className="admin-mgmt">
+      <AdminPageHeader title="Manage Past Questions">
+        Upload examination papers as PDFs or photographed pages. Multiple images
+        are stored as one paper — this is not a quiz or question-entry tool.
+      </AdminPageHeader>
+
+      {error ? <p className="admin-form-error">{error}</p> : null}
+      {status ? <p className="admin-form-success">{status}</p> : null}
 
       <div className="admin-panel">
-        <h2>Upload past question</h2>
+        <div className="admin-panel-head">
+          <div>
+            <h2>Upload past question</h2>
+            <p className="admin-panel-lede">
+              Set the academic level, course and exam year, then attach a PDF or
+              photographed pages. Published papers are visible to students in that
+              level only.
+            </p>
+          </div>
+        </div>
         <form onSubmit={handleCreate}>
-          <div className="admin-toolbar">
-            <div className="admin-field" style={{ maxWidth: 140 }}>
-              <label htmlFor="pq-level">Level</label>
+          <p className="admin-composer-label">Paper details</p>
+          <div className="admin-form-grid admin-form-grid-3">
+            <div className="admin-field">
+              <label htmlFor="pq-level">Academic level</label>
               {isSuperAdmin ? (
                 <select
                   id="pq-level"
@@ -304,7 +320,7 @@ function AdminPastQuestions() {
               )}
             </div>
             <div className="admin-field">
-              <label htmlFor="pq-course">Course code</label>
+              <label htmlFor="pq-course">Course</label>
               <select
                 id="pq-course"
                 value={courseCode}
@@ -318,7 +334,7 @@ function AdminPastQuestions() {
                 ))}
               </select>
             </div>
-            <div className="admin-field" style={{ maxWidth: 140 }}>
+            <div className="admin-field">
               <label htmlFor="pq-year">Exam year</label>
               <input
                 id="pq-year"
@@ -330,20 +346,20 @@ function AdminPastQuestions() {
                 required
               />
             </div>
+            <div className="admin-field admin-span-2">
+              <label htmlFor="pq-desc">Description (optional)</label>
+              <textarea
+                id="pq-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. First semester examination"
+                maxLength={500}
+              />
+            </div>
           </div>
 
-          <div className="admin-field">
-            <label htmlFor="pq-desc">Description (optional)</label>
-            <textarea
-              id="pq-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. First semester examination"
-              maxLength={500}
-            />
-          </div>
-
-          <div className="admin-act-filter-pills" style={{ marginTop: "0.5rem" }}>
+          <p className="admin-composer-label">Files</p>
+          <div className="admin-act-filter-pills">
             <button
               type="button"
               className={uploadMode === "pdf" ? "active" : ""}
@@ -360,35 +376,50 @@ function AdminPastQuestions() {
             </button>
           </div>
 
-          {uploadMode === "pdf" ? (
-            <div className="admin-field">
-              <label htmlFor="pq-pdf">PDF file (max 25 MB)</label>
-              <input
-                id="pq-pdf"
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-              />
-            </div>
-          ) : (
-            <div className="admin-field">
-              <label htmlFor="pq-images">
-                Images (JPG/PNG — max 10 MB each, 50 MB combined)
-              </label>
-              <input
-                id="pq-images"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png"
-                multiple
-                onChange={(e) =>
-                  setImageFiles(Array.from(e.target.files || []))
-                }
-              />
-              {imageFiles.length ? (
-                <span className="admin-muted">{imageFiles.length} file(s) selected</span>
-              ) : null}
-            </div>
-          )}
+          <div className="admin-upload-zone">
+            {uploadMode === "pdf" ? (
+              <div className="admin-field">
+                <label htmlFor="pq-pdf">PDF file (max 25 MB)</label>
+                <input
+                  id="pq-pdf"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                />
+                {pdfFile ? (
+                  <span className="admin-file-chip">{pdfFile.name}</span>
+                ) : (
+                  <span className="admin-muted">
+                    Choose one PDF examination paper.
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="admin-field">
+                <label htmlFor="pq-images">
+                  Images (JPG/PNG — max 10 MB each, 50 MB combined)
+                </label>
+                <input
+                  id="pq-images"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png"
+                  multiple
+                  onChange={(e) =>
+                    setImageFiles(Array.from(e.target.files || []))
+                  }
+                />
+                {imageFiles.length ? (
+                  <span className="admin-file-chip">
+                    {imageFiles.length} file{imageFiles.length === 1 ? "" : "s"} selected
+                  </span>
+                ) : (
+                  <span className="admin-muted">
+                    Select several photographed pages. They are stored as one paper.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
           <label className="admin-pq-check">
             <input
@@ -399,7 +430,7 @@ function AdminPastQuestions() {
             Publish immediately (visible to students)
           </label>
 
-          <div style={{ marginTop: "0.85rem" }}>
+          <div className="admin-action-bar" style={{ marginTop: "1rem" }}>
             <button
               type="submit"
               className="admin-btn admin-btn-primary"
@@ -412,19 +443,31 @@ function AdminPastQuestions() {
       </div>
 
       <div className="admin-panel">
-        <h2>Uploaded past questions</h2>
+        <div className="admin-panel-head">
+          <div>
+            <h2>Past question library</h2>
+            <p className="admin-panel-lede">
+              Search and filter uploaded papers. View or download files without
+              changing student access rules.
+            </p>
+          </div>
+          <span className="admin-count">
+            {loading ? "Loading…" : `${items.length} paper${items.length === 1 ? "" : "s"}`}
+          </span>
+        </div>
         <div className="admin-toolbar">
           <div className="admin-field">
-            <label htmlFor="f-q">Search course</label>
+            <label htmlFor="f-q">Search</label>
             <input
               id="f-q"
               type="search"
+              className="agri-search"
               placeholder="Course code or description…"
               value={filterQ}
               onChange={(e) => setFilterQ(e.target.value)}
             />
           </div>
-          <div className="admin-field" style={{ maxWidth: 130 }}>
+          <div className="admin-field admin-field-sm">
             <label htmlFor="f-level">Level</label>
             {isSuperAdmin ? (
               <select
@@ -448,7 +491,7 @@ function AdminPastQuestions() {
               />
             )}
           </div>
-          <div className="admin-field" style={{ maxWidth: 130 }}>
+          <div className="admin-field admin-field-sm">
             <label htmlFor="f-year">Year</label>
             <select
               id="f-year"
@@ -463,7 +506,7 @@ function AdminPastQuestions() {
               ))}
             </select>
           </div>
-          <div className="admin-field" style={{ maxWidth: 150 }}>
+          <div className="admin-field admin-field-sm">
             <label htmlFor="f-pub">Status</label>
             <select
               id="f-pub"
@@ -475,7 +518,7 @@ function AdminPastQuestions() {
               <option value="false">Draft</option>
             </select>
           </div>
-          <div className="admin-field" style={{ maxWidth: 160 }}>
+          <div className="admin-field admin-field-md">
             <label htmlFor="f-course">Course code</label>
             <input
               id="f-course"
@@ -487,14 +530,13 @@ function AdminPastQuestions() {
           </div>
         </div>
 
-        {status ? <p className="admin-form-success">{status}</p> : null}
-        {error ? <p className="admin-form-error">{error}</p> : null}
-        {loading ? <p className="admin-muted">Loading past questions…</p> : null}
+        {loading ? <p className="admin-loading">Loading past questions…</p> : null}
 
         {!loading && !items.length ? (
           <div className="admin-empty">
+            <div className="admin-empty-icon" aria-hidden="true" />
             <strong>No past questions yet</strong>
-            Upload a PDF or images using the form above.
+            Upload a PDF or images using the form above, or adjust the filters.
           </div>
         ) : null}
 
@@ -510,19 +552,26 @@ function AdminPastQuestions() {
                   <th>Pages</th>
                   <th>Uploaded</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  <th className="admin-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <strong>{item.courseCode}</strong>
-                      <div className="admin-muted">{item.courseTitle}</div>
+                      <div className="admin-cell-primary">{item.courseCode}</div>
+                      <div className="admin-cell-sub">{item.courseTitle}</div>
                     </td>
-                    <td>{item.level}</td>
+                    <td>
+                      <span className="admin-badge">{item.level}</span>
+                    </td>
                     <td>{item.examYear}</td>
-                    <td>{item.fileType}</td>
+                    <td>
+                      <div className="admin-cell-primary">{item.fileType}</div>
+                      {item.description ? (
+                        <div className="admin-cell-sub">{item.description}</div>
+                      ) : null}
+                    </td>
                     <td>{item.pageCount}</td>
                     <td>{formatNoteDate(item.createdAt)}</td>
                     <td>
@@ -532,26 +581,45 @@ function AdminPastQuestions() {
                         {item.published ? "Published" : "Draft"}
                       </span>
                     </td>
-                    <td>
+                    <td className="admin-col-actions">
                       <div className="admin-pq-actions">
                         <button
                           type="button"
-                          className="admin-link-btn"
+                          className="admin-btn admin-btn-ghost admin-btn-compact"
+                          onClick={() =>
+                            preview.open(item, fetchAdminPastQuestionPreviewUrls)
+                          }
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn-outline admin-btn-compact"
+                          onClick={() =>
+                            downloadAdminPastQuestion(item).catch((err) =>
+                              setError(err.message || "Download failed.")
+                            )
+                          }
+                        >
+                          Download
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn-outline admin-btn-compact"
                           onClick={() => togglePublish(item)}
                         >
                           {item.published ? "Unpublish" : "Publish"}
                         </button>
                         <button
                           type="button"
-                          className="admin-link-btn"
+                          className="admin-btn admin-btn-outline admin-btn-compact"
                           onClick={() => openEdit(item)}
                         >
                           Edit
                         </button>
                         <button
                           type="button"
-                          className="admin-link-btn"
-                          style={{ color: "#b91c1c" }}
+                          className="admin-btn admin-btn-danger admin-btn-compact"
                           onClick={() => handleDelete(item)}
                         >
                           Delete
@@ -725,6 +793,35 @@ function AdminPastQuestions() {
           </div>
         </div>
       ) : null}
+
+      <DocumentViewer
+        open={Boolean(preview.doc)}
+        title={
+          preview.doc
+            ? `${preview.doc.courseCode} · ${preview.doc.examYear}`
+            : ""
+        }
+        subtitle={
+          preview.doc
+            ? `${preview.doc.courseTitle || ""} · ${preview.doc.fileType}${
+                preview.doc.pageCount > 1
+                  ? ` · ${preview.doc.pageCount} pages`
+                  : ""
+              }`
+            : ""
+        }
+        format={preview.doc?.format === "images" ? "images" : "pdf"}
+        urls={preview.urls}
+        loading={preview.loading}
+        error={preview.error}
+        onClose={preview.close}
+        onDownload={() =>
+          preview.doc &&
+          downloadAdminPastQuestion(preview.doc).catch((err) =>
+            setError(err.message || "Download failed.")
+          )
+        }
+      />
     </section>
   );
 }

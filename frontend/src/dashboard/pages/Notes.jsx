@@ -212,6 +212,7 @@ function Notes() {
           <input
             id="notes-search"
             type="search"
+            className="agri-search"
             placeholder="Search titles, files, descriptions…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -292,23 +293,23 @@ function Notes() {
               ) : null}
               <div className="notes-card-actions">
                 <span>{formatNoteDate(note.createdAt)}</span>
-                <div>
+                <div className="file-actions">
                   <Link
                     to={`${base}/ai-assistant?course=${note.courseCode}`}
-                    className="link-btn"
+                    className="link-btn file-action-btn"
                   >
                     Use with AI
                   </Link>
                   <button
                     type="button"
-                    className="link-btn"
+                    className="link-btn file-action-btn"
                     onClick={() => openPreview(note)}
                   >
                     View
                   </button>
                   <button
                     type="button"
-                    className="link-btn"
+                    className="link-btn file-action-btn"
                     onClick={() => handleDownload(note)}
                   >
                     Download
@@ -316,7 +317,7 @@ function Notes() {
                   {isPersonal ? (
                     <button
                       type="button"
-                      className="link-btn danger"
+                      className="link-btn danger file-action-btn"
                       onClick={() => handleDelete(note)}
                     >
                       Delete

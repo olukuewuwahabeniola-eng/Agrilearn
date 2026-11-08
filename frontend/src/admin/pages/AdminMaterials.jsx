@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { adminFetch } from "../../utils/adminApi";
+import NoteViewer from "../../components/notes/NoteViewer";
+import { useDocumentPreview } from "../../hooks/useDocumentPreview";
+import {
+  adminFetch,
+  downloadAdminNote,
+  fetchAdminNotePreviewUrls,
+} from "../../utils/adminApi";
 
 function formatBytes(bytes) {
   const size = Number(bytes) || 0;
@@ -15,6 +21,7 @@ function AdminMaterials() {
   const [level, setLevel] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const preview = useDocumentPreview();
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -58,6 +65,7 @@ function AdminMaterials() {
             <input
               id="mat-q"
               type="search"
+              className="agri-search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Title, file, course…"
@@ -101,6 +109,7 @@ function AdminMaterials() {
                   <th>Level</th>
                   <th>Size</th>
                   <th>Published</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,6 +130,28 @@ function AdminMaterials() {
                         ? new Date(n.createdAt).toLocaleDateString()
                         : "—"}
                     </td>
+                    <td>
+                      <div className="admin-file-actions">
+                        <button
+                          type="button"
+                          className="admin-link-btn"
+                          onClick={() => preview.open(n, fetchAdminNotePreviewUrls)}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-link-btn"
+                          onClick={() =>
+                            downloadAdminNote(n).catch((err) =>
+                              setError(err.message || "Download failed.")
+                            )
+                          }
+                        >
+                          Download
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -128,6 +159,19 @@ function AdminMaterials() {
           </div>
         ) : null}
       </div>
+      <NoteViewer
+        note={preview.doc}
+        urls={preview.urls}
+        loading={preview.loading}
+        error={preview.error}
+        onClose={preview.close}
+        onDownload={() =>
+          preview.doc &&
+          downloadAdminNote(preview.doc).catch((err) =>
+            setError(err.message || "Download failed.")
+          )
+        }
+      />
     </section>
   );
 }

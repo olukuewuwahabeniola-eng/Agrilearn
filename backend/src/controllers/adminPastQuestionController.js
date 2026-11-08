@@ -19,6 +19,10 @@ const {
   resolveScopedLevel,
   sendAdminAccessError,
 } = require("../utils/adminAccess");
+const {
+  isDownloadQuery,
+  setFileStreamHeaders,
+} = require("../utils/fileStreamHeaders");
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -527,12 +531,12 @@ async function streamPastQuestionFile(req, res) {
       });
     }
 
-    res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${encodeURIComponent(file.originalName || "file")}"`
-    );
-    if (file.size) res.setHeader("Content-Length", String(file.size));
+    setFileStreamHeaders(res, {
+      mimeType: file.mimeType,
+      filename: file.originalName || "file",
+      download: isDownloadQuery(req),
+      size: file.size,
+    });
 
     const stream = await openStoredReadStream(file.storagePath);
     stream.on("error", (err) => {

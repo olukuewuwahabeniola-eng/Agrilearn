@@ -3,6 +3,10 @@ const PastQuestion = require("../models/PastQuestion");
 const { findCourseForStudent } = require("../data/coursesByLevel");
 const { openStoredReadStream } = require("../utils/pastQuestionStorage");
 const { logPastQuestionAccessIfNeeded } = require("../utils/activityTracker");
+const {
+  isDownloadQuery,
+  setFileStreamHeaders,
+} = require("../utils/fileStreamHeaders");
 
 function buildStudentFilter(req, student) {
   const filter = {
@@ -148,19 +152,16 @@ async function streamPastQuestionFile(req, res) {
       });
     }
 
-    const disposition =
-      req.query.download === "1" ? "attachment" : "inline";
+    const download = isDownloadQuery(req);
 
-    await logPastQuestionAccessIfNeeded(req.student, doc, {
-      download: disposition === "attachment",
+    await logPastQuestionAccessIfNeeded(req.student, doc, { download });
+
+    setFileStreamHeaders(res, {
+      mimeType: file.mimeType,
+      filename: file.originalName || "file",
+      download,
+      size: file.size,
     });
-
-    res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
-    res.setHeader(
-      "Content-Disposition",
-      `${disposition}; filename="${encodeURIComponent(file.originalName || "file")}"`
-    );
-    if (file.size) res.setHeader("Content-Length", String(file.size));
 
     const stream = await openStoredReadStream(file.storagePath);
     stream.on("error", (err) => {

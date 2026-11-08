@@ -12,6 +12,35 @@ function envValue(name) {
   return String(value).trim().replace(/^["']|["']$/g, "");
 }
 
+/**
+ * Resolve credentials from the three standard env vars, or from CLOUDINARY_URL
+ * (cloudinary://API_KEY:API_SECRET@CLOUD_NAME) when those are empty.
+ * Same credential source for notes, past questions, and Community uploads.
+ */
+function resolveCloudinaryCredentials() {
+  let cloudName = envValue("CLOUDINARY_CLOUD_NAME");
+  let apiKey = envValue("CLOUDINARY_API_KEY");
+  let apiSecret = envValue("CLOUDINARY_API_SECRET");
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    const url = envValue("CLOUDINARY_URL");
+    if (url) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "cloudinary:") {
+          cloudName = cloudName || decodeURIComponent(parsed.hostname || "");
+          apiKey = apiKey || decodeURIComponent(parsed.username || "");
+          apiSecret = apiSecret || decodeURIComponent(parsed.password || "");
+        }
+      } catch {
+        /* ignore malformed CLOUDINARY_URL */
+      }
+    }
+  }
+
+  return { cloudName, apiKey, apiSecret };
+}
+
 function getCloudinaryFolder() {
   const configuredFolder = envValue("CLOUDINARY_FOLDER");
   if (configuredFolder) {
@@ -21,10 +50,11 @@ function getCloudinaryFolder() {
 }
 
 function cloudinaryCredentialStatus() {
+  const credentials = resolveCloudinaryCredentials();
   return {
-    cloudName: Boolean(envValue("CLOUDINARY_CLOUD_NAME")),
-    apiKey: Boolean(envValue("CLOUDINARY_API_KEY")),
-    apiSecret: Boolean(envValue("CLOUDINARY_API_SECRET")),
+    cloudName: Boolean(credentials.cloudName),
+    apiKey: Boolean(credentials.apiKey),
+    apiSecret: Boolean(credentials.apiSecret),
     folder: getCloudinaryFolder(),
   };
 }
@@ -52,10 +82,11 @@ function ensureCloudinaryConfigured() {
   }
 
   if (!configured) {
+    const credentials = resolveCloudinaryCredentials();
     cloudinary.config({
-      cloud_name: envValue("CLOUDINARY_CLOUD_NAME"),
-      api_key: envValue("CLOUDINARY_API_KEY"),
-      api_secret: envValue("CLOUDINARY_API_SECRET"),
+      cloud_name: credentials.cloudName,
+      api_key: credentials.apiKey,
+      api_secret: credentials.apiSecret,
       secure: true,
     });
     configured = true;

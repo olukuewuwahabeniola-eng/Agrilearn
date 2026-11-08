@@ -27,6 +27,7 @@ const {
   logMaterialViewIfNeeded,
   recordPersonalUpload,
 } = require("../utils/activityTracker");
+const { assertFileSignature } = require("../utils/fileSignature");
 
 const ALLOWED_ACTIONS = ["ask", "summarise", "quiz"];
 const ALLOWED_UPLOAD_MIMES = new Set([
@@ -370,6 +371,15 @@ async function assist(req, res) {
       const mime = String(deviceFile.mimetype || "").toLowerCase();
       const isPdf = mime === "application/pdf";
       const isImage = mime.startsWith("image/");
+
+      try {
+        assertFileSignature(deviceFile.buffer, mime);
+      } catch (signatureError) {
+        return res.status(400).json({
+          success: false,
+          message: signatureError.message || "That file type is not allowed.",
+        });
+      }
 
       if (isImage && deviceFile.buffer.length > MAX_IMAGE_BYTES) {
         return res.status(400).json({

@@ -75,6 +75,7 @@ function ActivityViewAllModal({
               <input
                 id="viewall-student-q"
                 type="search"
+                className="agri-search"
                 value={studentQ}
                 onChange={(e) => onStudentQChange(e.target.value)}
                 placeholder="Search student…"

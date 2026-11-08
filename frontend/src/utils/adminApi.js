@@ -1,3 +1,4 @@
+import { objectUrlForBlob, typedBlob } from "./fileBlobs";
 import { uploadFormWithProgress } from "./uploadFormWithProgress";
 
 /**
@@ -105,4 +106,63 @@ export async function uploadAdminNote(form, { onProgress } = {}) {
     method: "POST",
     body: form,
   });
+}
+
+export function adminNoteFileUrl(noteId, fileIndex = 0, { download = false } = {}) {
+  const suffix = download ? "?download=1" : "";
+  return `${getAdminApiBaseUrl()}/api/admin/notes/${noteId}/files/${fileIndex}/file${suffix}`;
+}
+
+export async function fetchAdminNotePageBlob(noteId, fileIndex = 0, options = {}) {
+  const token = getAdminToken();
+  const response = await fetch(adminNoteFileUrl(noteId, fileIndex, options), {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error(`Could not open file (${response.status})`);
+  }
+  const blob = await response.blob();
+  const mime = response.headers.get("Content-Type") || blob.type;
+  return typedBlob(blob, mime);
+}
+
+export async function fetchAdminNotePreviewUrls(note) {
+  const count = Math.max(
+    1,
+    Number(note?.pageCount) || (Array.isArray(note?.files) ? note.files.length : 1)
+  );
+  const mime =
+    note?.format === "images" || note?.fileType === "Images"
+      ? undefined
+      : "application/pdf";
+  const urls = [];
+  for (let index = 0; index < count; index += 1) {
+    const blob = await fetchAdminNotePageBlob(note.id, index);
+    urls.push(objectUrlForBlob(blob, mime || blob.type));
+  }
+  return urls;
+}
+
+export async function downloadAdminNote(note) {
+  const count = Math.max(
+    1,
+    Number(note?.pageCount) || (Array.isArray(note?.files) ? note.files.length : 1)
+  );
+  const isImages = note?.format === "images" || count > 1;
+  for (let index = 0; index < count; index += 1) {
+    const blob = await fetchAdminNotePageBlob(note.id, index, { download: true });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download =
+      note.files?.[index]?.originalName ||
+      note.originalName ||
+      (isImages ? `page-${index + 1}` : "notes.pdf");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    if (!isImages) break;
+  }
 }

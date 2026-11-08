@@ -1,4 +1,5 @@
 import { apiFetch, getApiBaseUrl, getToken } from "./api";
+import { objectUrlForBlob, typedBlob } from "./fileBlobs";
 
 export function formatPastQuestionDate(value) {
   if (!value) return "";
@@ -52,7 +53,20 @@ export async function fetchPastQuestionFileBlob(pastQuestionId, fileIndex, optio
     }
     throw new Error(message);
   }
-  return response.blob();
+  const blob = await response.blob();
+  const mime = response.headers.get("Content-Type") || blob.type;
+  return typedBlob(blob, mime);
+}
+
+export async function fetchPastQuestionPreviewUrls(item) {
+  const count = Math.max(1, Number(item?.pageCount) || 1);
+  const mime = item?.format === "images" ? undefined : "application/pdf";
+  const urls = [];
+  for (let index = 0; index < count; index += 1) {
+    const blob = await fetchPastQuestionFileBlob(item.id, index);
+    urls.push(objectUrlForBlob(blob, mime || blob.type));
+  }
+  return urls;
 }
 
 export async function downloadPastQuestionFile(

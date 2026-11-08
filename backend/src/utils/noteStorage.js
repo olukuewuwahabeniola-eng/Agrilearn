@@ -19,6 +19,7 @@ const {
   openCloudinaryReadStream,
   destroyCloudinaryAsset,
 } = require("./cloudinary");
+const { assertFileSignature } = require("./fileSignature");
 
 function getUploadsRoot() {
   const configured = process.env.UPLOADS_DIR;
@@ -119,6 +120,7 @@ async function saveNoteFile({
   }
 
   validateNoteFileSize(buffer, normalizedMime);
+  assertFileSignature(buffer, normalizedMime);
 
   if (!isCloudinaryConfigured()) {
     const error = new Error(

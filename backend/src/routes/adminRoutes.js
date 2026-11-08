@@ -6,11 +6,13 @@ const {
   listCourses,
   listNotes,
   uploadNote,
+  streamNoteFile,
   updateProfile,
 } = require("../controllers/adminController");
 const adminActivityRoutes = require("./adminActivityRoutes");
 const adminDataManagementRoutes = require("./adminDataManagementRoutes");
 const adminAdministratorsRoutes = require("./adminAdministratorsRoutes");
+const adminCommunityRoutes = require("./adminCommunityRoutes");
 const {
   listPastQuestions,
   createPastQuestion,
@@ -38,6 +40,7 @@ router.get("/students/:id", getStudent);
 router.get("/courses", listCourses);
 router.get("/notes", listNotes);
 router.post("/notes", uploadNote);
+router.get("/notes/:id/files/:fileIndex/file", streamNoteFile);
 router.get("/past-questions", listPastQuestions);
 router.post("/past-questions", createPastQuestion);
 router.patch("/past-questions/:id", updatePastQuestion);
@@ -48,6 +51,7 @@ router.get(
   streamPastQuestionFile
 );
 router.use("/activity", adminActivityRoutes);
+router.use("/community", adminCommunityRoutes);
 router.use("/data-management", requireSuperAdmin, adminDataManagementRoutes);
 router.use("/administrators", adminAdministratorsRoutes);
 router.patch("/profile", updateProfile);

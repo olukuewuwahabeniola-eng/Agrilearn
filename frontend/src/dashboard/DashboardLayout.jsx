@@ -3,12 +3,15 @@ import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getDashboardOverview } from "../utils/dashboardApi";
 import { getInitials } from "./data/courses";
+import CommunityAvatar from "./components/community/CommunityAvatar";
 import { getDashboardCourses } from "./data/dashboardCourses";
 import { getDashboardBasePath, normalizeLevel } from "./levelPaths";
 import { DashboardNavProvider } from "./navigation/DashboardNavContext";
 import DashboardSidebar from "./DashboardSidebar";
 import DashboardTopbar from "./DashboardTopbar";
+import ErrorBoundary from "../components/ErrorBoundary";
 import "./dashboard.css";
+import "./components/community/community.css";
 
 function DashboardShell() {
   const { student } = useAuth();
@@ -29,6 +32,10 @@ function DashboardShell() {
     location.pathname === base || location.pathname === `${base}/`;
 
   const closeSidebar = () => setSidebarOpen(false);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!showRightRail || !student) return undefined;
@@ -76,7 +83,9 @@ function DashboardShell() {
         <DashboardTopbar onMenuToggle={() => setSidebarOpen((open) => !open)} />
 
         <div className="dash-content">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
 
         <footer className="dash-footer">
@@ -88,7 +97,16 @@ function DashboardShell() {
       {showRightRail && (
         <aside className="dash-right" aria-label="Student summary">
           <div className="dash-panel profile-summary">
-            <div className="big-avatar">{getInitials(student?.fullName)}</div>
+            {student?.hasAvatar || student?.avatar?.hasAvatar ? (
+              <CommunityAvatar
+                studentId={String(student?._id || student?.id || "")}
+                name={student?.fullName}
+                hasAvatar
+                className="big-avatar lg"
+              />
+            ) : (
+              <div className="big-avatar">{getInitials(student?.fullName)}</div>
+            )}
             <strong>{student?.fullName || "Student"}</strong>
             <p className="meta">
               {student?.level ? `${student.level} Level` : "Student"}

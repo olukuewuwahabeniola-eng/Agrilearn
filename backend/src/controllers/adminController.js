@@ -9,7 +9,10 @@ const {
   findCourseForStudent,
 } = require("../data/coursesByLevel");
 const { ALLOWED_LEVELS } = require("../models/Student");
-const { deleteStoredNoteFile } = require("../utils/noteStorage");
+const {
+  deleteStoredNoteFile,
+  openStoredReadStream,
+} = require("../utils/noteStorage");
 const {
   runNotesUpload,
   handleNotesUploadError,
@@ -18,7 +21,12 @@ const {
   persistNotePages,
   defaultNoteTitle,
   findDuplicateNote,
+  resolveNotePages,
 } = require("../utils/notesUpload");
+const {
+  isDownloadQuery,
+  setFileStreamHeaders,
+} = require("../utils/fileStreamHeaders");
 const { startOfTodayUtc } = require("../utils/activityTracker");
 const {
   applyAdminLevelFilter,
@@ -537,6 +545,81 @@ async function updateProfile(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/notes/:id/files/:fileIndex/file
+ */
+async function streamNoteFile(req, res) {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid note id.",
+      });
+    }
+
+    const note = await NoteResource.findById(req.params.id);
+    if (!note) {
+      return res.status(404).json({
+        success: false,
+        message: "Note not found.",
+      });
+    }
+
+    assertResourceLevel(req.admin, note.level);
+
+    const fileIndex = parseInt(String(req.params.fileIndex || "0"), 10);
+    if (!Number.isFinite(fileIndex) || fileIndex < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid page number.",
+      });
+    }
+
+    const pages = resolveNotePages(note);
+    const page = pages[fileIndex];
+    if (!page?.storagePath) {
+      return res.status(404).json({
+        success: false,
+        message: "That page was not found.",
+      });
+    }
+
+    setFileStreamHeaders(res, {
+      mimeType: page.mimeType,
+      filename: page.originalName || note.originalName || "notes",
+      download: isDownloadQuery(req),
+      size: page.size,
+    });
+
+    const stream = await openStoredReadStream(page.storagePath);
+    stream.on("error", (err) => {
+      console.error("Admin note stream error:", err.message);
+      if (!res.headersSent) {
+        res.status(404).json({
+          success: false,
+          message: "File is missing on the server.",
+        });
+      } else {
+        res.end();
+      }
+    });
+    stream.pipe(res);
+    return undefined;
+  } catch (error) {
+    if (
+      error.code === "ADMIN_LEVEL_FORBIDDEN" ||
+      error.code === "ADMIN_LEVEL_INVALID"
+    ) {
+      return sendAdminAccessError(res, error);
+    }
+    console.error("Admin note file error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Could not open that file.",
+    });
+  }
+}
+
 module.exports = {
   overview,
   listStudents,
@@ -544,5 +627,6 @@ module.exports = {
   listCourses,
   listNotes,
   uploadNote,
+  streamNoteFile,
   updateProfile,
 };

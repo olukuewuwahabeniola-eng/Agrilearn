@@ -4,15 +4,16 @@ const nodemailer = require("nodemailer");
  * Returns true when SMTP + support inbox env vars are all set.
  * Does not invent or log credential values.
  */
+function envFilled(name) {
+  return Boolean(process.env[name] && String(process.env[name]).trim());
+}
+
+function isSmtpConfigured() {
+  return ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"].every(envFilled);
+}
+
 function isEmailDeliveryConfigured() {
-  const required = [
-    process.env.SMTP_HOST,
-    process.env.SMTP_PORT,
-    process.env.SMTP_USER,
-    process.env.SMTP_PASS,
-    process.env.SUPPORT_EMAIL,
-  ];
-  return required.every((value) => Boolean(value && String(value).trim()));
+  return isSmtpConfigured() && envFilled("SUPPORT_EMAIL");
 }
 
 function createTransporter() {
@@ -80,6 +81,53 @@ async function sendSupportNotification(savedMessage) {
   });
 }
 
+/**
+ * Sends a password reset link. Never includes the user's password.
+ */
+async function sendPasswordResetEmail({ to, name, resetUrl, audience = "student" }) {
+  if (!isSmtpConfigured()) {
+    const error = new Error("Email delivery is not configured.");
+    error.code = "EMAIL_NOT_CONFIGURED";
+    throw error;
+  }
+
+  const transporter = createTransporter();
+  const fromAddress = String(process.env.SMTP_USER).trim();
+  const safeName = String(name || "there").trim() || "there";
+  const kind = audience === "admin" ? "administrator" : "student";
+  const subject =
+    audience === "admin"
+      ? "Reset your AgriLearn admin password"
+      : "Reset your AgriLearn password";
+
+  await transporter.sendMail({
+    from: `"AgriLearn" <${fromAddress}>`,
+    to: String(to || "").trim(),
+    subject,
+    text: [
+      `Hi ${safeName},`,
+      "",
+      `We received a request to reset your AgriLearn ${kind} account password.`,
+      "This link expires in 30 minutes and can be used only once:",
+      resetUrl,
+      "",
+      "If you did not request this, you can ignore this email. Your password will stay the same.",
+      "",
+      "— AgriLearn",
+    ].join("\n"),
+    html: `
+      <p>Hi ${escapeHtml(safeName)},</p>
+      <p>We received a request to reset your AgriLearn ${kind} account password.</p>
+      <p>This link expires in <strong>30 minutes</strong> and can be used only once:</p>
+      <p><a href="${escapeHtml(resetUrl)}">Reset your password</a></p>
+      <p>If the button does not work, copy this URL into your browser:</p>
+      <p>${escapeHtml(resetUrl)}</p>
+      <p>If you did not request this, you can ignore this email. Your password will stay the same.</p>
+      <p>— AgriLearn</p>
+    `,
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -90,6 +138,8 @@ function escapeHtml(value) {
 }
 
 module.exports = {
+  isSmtpConfigured,
   isEmailDeliveryConfigured,
   sendSupportNotification,
+  sendPasswordResetEmail,
 };

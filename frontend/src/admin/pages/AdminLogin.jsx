@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import PasswordInput from "../../components/auth/PasswordInput";
 import { adminFetch } from "../../utils/adminApi";
+import { LOGIN_SELECTION_PATH, STUDENT_LOGIN_PATH } from "../../utils/authNavigation";
 import { useAdminAuth } from "../AdminAuthContext";
 
 function AdminLogin() {
-  const { isAuthenticated, loading, loginSuccess } = useAdminAuth();
+  const { loginSuccess } = useAdminAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -22,19 +23,6 @@ function AdminLogin() {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location, navigate]);
-
-  // Wait for session restore so a valid cookie/token does not flash the login form.
-  if (loading) {
-    return (
-      <div className="admin-loading-screen" role="status">
-        Checking admin session...
-      </div>
-    );
-  }
-
-  if (isAuthenticated) {
-    return <Navigate to="/admin" replace />;
-  }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -57,6 +45,13 @@ function AdminLogin() {
 
   return (
     <div className="admin-login-page">
+      <button
+        type="button"
+        className="admin-login-back"
+        onClick={() => navigate(LOGIN_SELECTION_PATH)}
+      >
+        <span aria-hidden="true">←</span> Back
+      </button>
       <div className="admin-login-card">
         <div className="admin-login-brand">
           <span className="admin-login-mark" aria-hidden="true">
@@ -108,6 +103,10 @@ function AdminLogin() {
             disabled={submitting}
           />
 
+          <p className="admin-forgot">
+            <Link to="/admin/forgot-password">Forgot password?</Link>
+          </p>
+
           <button
             type="submit"
             className="admin-btn admin-btn-primary"
@@ -120,7 +119,7 @@ function AdminLogin() {
         <p className="admin-login-footer">
           <Link to="/">Back to AgriLearn</Link>
           {" · "}
-          <Link to="/login">Student login</Link>
+          <Link to={STUDENT_LOGIN_PATH}>Student login</Link>
         </p>
       </div>
     </div>

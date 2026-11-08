@@ -32,40 +32,38 @@ function CourseDetail() {
     return undefined;
   }, [course?.code]);
 
-  const loadCourseData = async () => {
-    if (!course?.code) return;
-    setNotesLoading(true);
-    setNotesError("");
-    try {
-      const notesData = await listNotes({
-        library: "official",
-        courseCode: course.code,
-      });
-      const list = Array.isArray(notesData.notes) ? notesData.notes : [];
-      const courseCode = String(course.code).toUpperCase();
-      setNotes(
-        list.filter(
-          (note) => String(note.courseCode || "").toUpperCase() === courseCode
-        )
-      );
-    } catch (error) {
-      setNotes([]);
-      setNotesError(error.message || "Could not load course materials.");
-    } finally {
-      setNotesLoading(false);
-    }
-  };
-
   useEffect(() => {
     let cancelled = false;
+    if (!course?.code) return undefined;
+
     (async () => {
-      if (!course?.code || cancelled) return;
-      await loadCourseData();
+      setNotesLoading(true);
+      setNotesError("");
+      try {
+        const notesData = await listNotes({
+          library: "official",
+          courseCode: course.code,
+        });
+        if (cancelled) return;
+        const list = Array.isArray(notesData.notes) ? notesData.notes : [];
+        const courseCode = String(course.code).toUpperCase();
+        setNotes(
+          list.filter(
+            (note) => String(note.courseCode || "").toUpperCase() === courseCode
+          )
+        );
+      } catch (error) {
+        if (cancelled) return;
+        setNotes([]);
+        setNotesError(error.message || "Could not load course materials.");
+      } finally {
+        if (!cancelled) setNotesLoading(false);
+      }
     })();
+
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course?.code]);
 
   useEffect(() => {
@@ -146,17 +144,17 @@ function CourseDetail() {
                   {note.createdAt ? ` · ${formatNoteDate(note.createdAt)}` : ""}
                 </span>
               </div>
-              <div className="course-note-actions">
+              <div className="course-note-actions file-actions">
                 <button
                   type="button"
-                  className="link-btn"
+                  className="link-btn file-action-btn"
                   onClick={() => openPreview(note)}
                 >
                   View
                 </button>
                 <button
                   type="button"
-                  className="link-btn"
+                  className="link-btn file-action-btn"
                   onClick={() =>
                     downloadNote(note).catch((err) =>
                       setNotesError(err.message)

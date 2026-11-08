@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { LOGIN_SELECTION_PATH } from "../utils/authNavigation";
 import "./FooterCTA.css";
 
 function FooterCTA() {
@@ -27,7 +28,7 @@ function FooterCTA() {
           <Link to="/signup" className="btn btn-white">
             Sign Up Free <span aria-hidden="true">→</span>
           </Link>
-          <Link to="/login" className="btn btn-ghost-light">
+          <Link to={LOGIN_SELECTION_PATH} className="btn btn-ghost-light">
             Log In
           </Link>
         </div>
