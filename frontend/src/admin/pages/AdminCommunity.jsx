@@ -24,7 +24,9 @@ import {
 import {
   connectCommunitySocket,
   joinCommunityRoom,
+  startCommunityHeartbeat,
 } from "../../utils/communitySocket";
+import { peopleOnlineLabel } from "../../dashboard/components/community/presenceLabel";
 import {
   COMMUNITY_UPLOAD_HINT,
   validateCommunityFile,
@@ -63,17 +65,39 @@ function AdminCommunity() {
   const threadRef = useRef(null);
   const socketRef = useRef(null);
   const stickBottom = useRef(true);
+  const latestOnlineRef = useRef({});
+  const isSuperRef = useRef(isSuper);
+  const assignedRef = useRef(assigned);
+  isSuperRef.current = isSuper;
+  assignedRef.current = assigned;
+
+  const rememberOnline = useCallback((nextLevel, online) => {
+    if (!nextLevel || online == null || Number.isNaN(Number(online))) return;
+    latestOnlineRef.current[String(nextLevel)] = Math.max(0, Number(online));
+  }, []);
 
   const loadOverview = useCallback(async () => {
     const data = await fetchAdminCommunityOverview();
-    setCards(data.cards || []);
+    setCards(
+      (data.cards || []).map((card) => ({
+        ...card,
+        online: latestOnlineRef.current[card.level] ?? card.online,
+        active:
+          (latestOnlineRef.current[card.level] ?? card.online ?? 0) > 0,
+      }))
+    );
     if (!isSuper && data.assignedLevel) setLevel(data.assignedLevel);
   }, [isSuper]);
 
   const loadRoom = useCallback(async (nextLevel) => {
     if (!nextLevel) return;
     const data = await fetchAdminCommunity(nextLevel);
-    setCommunity(data.community);
+    const online =
+      latestOnlineRef.current[nextLevel] ?? data.community?.online;
+    setCommunity({
+      ...data.community,
+      online,
+    });
     setOnlineMembers(data.onlineMembers || []);
   }, []);
 
@@ -127,6 +151,7 @@ function AdminCommunity() {
     const socket = connectCommunitySocket({ admin: true });
     socketRef.current = socket;
     const stopJoin = joinCommunityRoom(socket, level);
+    const stopHeartbeat = startCommunityHeartbeat(socket);
     const watchedLevel = level;
 
     const onMessage = (payload) => {
@@ -146,9 +171,63 @@ function AdminCommunity() {
     socket.on("community:message", onMessage);
     socket.on("community:message:update", onMessage);
     socket.on("community:presence", (payload) => {
-      if (payload?.level && payload.level !== watchedLevel) return;
-      loadRoom(watchedLevel).catch(() => {});
-      loadOverview().catch(() => {});
+      const payloadLevel = payload?.level ? String(payload.level) : "";
+      const assignedLevel = String(assignedRef.current || "");
+      if (
+        !isSuperRef.current &&
+        payloadLevel &&
+        assignedLevel &&
+        payloadLevel !== assignedLevel
+      ) {
+        return;
+      }
+
+      if (payload?.totals && typeof payload.totals === "object") {
+        Object.entries(payload.totals).forEach(([lvl, count]) => {
+          rememberOnline(lvl, count);
+        });
+      } else if (payloadLevel && payload?.online != null) {
+        rememberOnline(payloadLevel, payload.online);
+      }
+
+      setCards((current) => {
+        const known = latestOnlineRef.current;
+        if (!current.length) {
+          const levels = isSuperRef.current
+            ? LEVELS
+            : [assignedRef.current].filter(Boolean);
+          return levels.map((lvl) => ({
+            level: lvl,
+            title: `${lvl} Level`,
+            members: 0,
+            online: known[lvl] ?? 0,
+            active: (known[lvl] ?? 0) > 0,
+          }));
+        }
+        return current.map((card) => {
+          const online = known[card.level] ?? card.online;
+          return { ...card, online, active: online > 0 };
+        });
+      });
+
+      if (!payloadLevel || payloadLevel === watchedLevel) {
+        const online =
+          latestOnlineRef.current[watchedLevel] ?? payload?.online;
+        setCommunity((current) =>
+          current ? { ...current, online } : current
+        );
+        fetchAdminCommunity(watchedLevel)
+          .then((data) => {
+            setOnlineMembers(data.onlineMembers || []);
+            setCommunity({
+              ...data.community,
+              online:
+                latestOnlineRef.current[watchedLevel] ??
+                data.community?.online,
+            });
+          })
+          .catch(() => {});
+      }
     });
     socket.on("community:error", (payload) => {
       if (payload?.message) setError(payload.message);
@@ -156,11 +235,12 @@ function AdminCommunity() {
 
     return () => {
       stopJoin();
+      stopHeartbeat();
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [level, loadOverview, loadRoom]);
+  }, [level, rememberOnline]);
 
   useEffect(() => {
     const el = threadRef.current;
@@ -299,6 +379,10 @@ function AdminCommunity() {
 
   const visibleOnline = showAllOnline ? onlineMembers : onlineMembers.slice(0, 7);
   const visibleMessages = hits || messages;
+  const totalOnline = cards.reduce(
+    (sum, card) => sum + (Number(card.online) || 0),
+    0
+  );
 
   return (
     <section className="community-page">
@@ -335,6 +419,12 @@ function AdminCommunity() {
         </form>
       </div>
 
+      {isSuper ? (
+        <p className="community-online-total">
+          {peopleOnlineLabel(totalOnline)} across all levels
+        </p>
+      ) : null}
+
       <div className="community-cards">
         {(cards.length ? cards : LEVELS.filter((item) => isSuper || item === assigned).map((item) => ({
           level: item,
@@ -358,7 +448,7 @@ function AdminCommunity() {
             <span>{card.members} members</span>
             <small>
               <span className="community-dot" />
-              {card.online > 0 ? "Active" : `${card.online} online`}
+              {peopleOnlineLabel(card.online)}
             </small>
           </button>
         ))}
@@ -375,7 +465,11 @@ function AdminCommunity() {
           <div>
             <h2>{community?.title || `${level} Level Community`}</h2>
             <p>
-              {community?.members ?? 0} members • {community?.online ?? 0} online
+              {community?.members ?? 0} members
+              <span className="community-online-count">
+                {" "}
+                • {peopleOnlineLabel(community?.online)}
+              </span>
             </p>
           </div>
         </div>
@@ -463,7 +557,8 @@ function AdminCommunity() {
 
         <aside className="community-online-rail open" aria-label="Online members">
           <h3>
-            <span className="community-dot" /> Online Now ({onlineMembers.length})
+            <span className="community-dot" />{" "}
+            {peopleOnlineLabel(community?.online ?? onlineMembers.length)}
           </h3>
           {visibleOnline.length === 0 ? (
             <p className="community-empty">No students are online in this level.</p>

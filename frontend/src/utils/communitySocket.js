@@ -78,3 +78,25 @@ export function joinCommunityRoom(socket, level) {
     socket.off("community:joined", onJoined);
   };
 }
+
+/**
+ * Keep Community presence alive while this page is open. Leaving the
+ * Community unmounts the socket, so other AgriLearn pages do not keep
+ * the student counted as online here.
+ */
+export function startCommunityHeartbeat(socket, intervalMs = 20000) {
+  if (!socket) return () => {};
+
+  const beat = () => {
+    if (socket.connected) socket.emit("community:heartbeat");
+  };
+
+  beat();
+  const timer = setInterval(beat, intervalMs);
+  socket.on("connect", beat);
+
+  return () => {
+    clearInterval(timer);
+    socket.off("connect", beat);
+  };
+}

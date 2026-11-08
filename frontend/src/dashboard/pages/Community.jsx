@@ -14,7 +14,9 @@ import {
 import {
   connectCommunitySocket,
   joinCommunityRoom,
+  startCommunityHeartbeat,
 } from "../../utils/communitySocket";
+import { peopleOnlineLabel } from "../components/community/presenceLabel";
 import {
   COMMUNITY_UPLOAD_HINT,
   validateCommunityFile,
@@ -68,16 +70,34 @@ function Community() {
   const typingTimer = useRef(null);
   const stickBottom = useRef(true);
   const studentRef = useRef(student);
-  const loadRoomRef = useRef(null);
+  const latestOnlineRef = useRef(null);
   studentRef.current = student;
 
   const myId = studentIdOf(student);
 
+  const applyOnline = useCallback((online, level) => {
+    if (online == null || Number.isNaN(Number(online))) return;
+    const count = Math.max(0, Number(online));
+    latestOnlineRef.current = count;
+    setCommunity((current) => ({
+      ...(current || {}),
+      online: count,
+      level: level || current?.level,
+    }));
+  }, []);
+
   const loadRoom = useCallback(async () => {
     const data = await fetchCommunity();
-    setCommunity(data.community);
+    const online =
+      latestOnlineRef.current != null
+        ? latestOnlineRef.current
+        : data.community?.online;
+    setCommunity({
+      ...data.community,
+      online,
+    });
     setOnlineMembers(Array.isArray(data.onlineMembers) ? data.onlineMembers : []);
-    return data.community;
+    return { ...data.community, online };
   }, []);
 
   const loadMessages = useCallback(async () => {
@@ -85,8 +105,6 @@ function Community() {
     setMessages((data.messages || []).map((row) => withMine(row, studentRef.current)));
     setHasMore(Boolean(data.hasMore));
   }, []);
-
-  loadRoomRef.current = loadRoom;
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +131,7 @@ function Community() {
     const socket = connectCommunitySocket();
     socketRef.current = socket;
     const stopJoin = joinCommunityRoom(socket);
+    const stopHeartbeat = startCommunityHeartbeat(socket);
 
     const onMessage = (payload) => {
       const message = payload?.id ? payload : payload?.message;
@@ -126,10 +145,24 @@ function Community() {
     socket.on("community:message", onMessage);
     socket.on("community:message:update", onMessage);
     socket.on("community:presence", (payload) => {
-      setCommunity((current) =>
-        current ? { ...current, online: payload?.online ?? current.online } : current
-      );
-      loadRoomRef.current?.().catch(() => {});
+      const ownLevel = String(studentRef.current?.level || "");
+      const payloadLevel = payload?.level ? String(payload.level) : "";
+      if (payloadLevel && ownLevel && payloadLevel !== ownLevel) return;
+      applyOnline(payload?.online, payloadLevel);
+      fetchCommunity()
+        .then((data) => {
+          setOnlineMembers(
+            Array.isArray(data.onlineMembers) ? data.onlineMembers : []
+          );
+          setCommunity((current) => ({
+            ...data.community,
+            online:
+              latestOnlineRef.current ??
+              data.community?.online ??
+              current?.online,
+          }));
+        })
+        .catch(() => {});
     });
     socket.on("community:typing", (payload) => {
       if (!payload?.studentId || payload.studentId === myId) return;
@@ -154,12 +187,13 @@ function Community() {
 
     return () => {
       stopJoin();
+      stopHeartbeat();
       clearTimeout(typingTimer.current);
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [myId]);
+  }, [applyOnline, myId]);
 
   useEffect(() => {
     const el = threadRef.current;
@@ -343,7 +377,11 @@ function Community() {
           <div>
             <h2>{community?.title || `${student?.level || ""} Level Community`}</h2>
             <p>
-              {community?.members ?? 0} members • Online: {community?.online ?? 0}
+              {community?.members ?? 0} members
+              <span className="community-online-count">
+                {" "}
+                • {peopleOnlineLabel(community?.online)}
+              </span>
             </p>
           </div>
         </div>
@@ -353,7 +391,7 @@ function Community() {
           onClick={() => setOnlineOpen((open) => !open)}
         >
           <span className="community-dot" />
-          Online
+          {peopleOnlineLabel(community?.online)}
         </button>
       </div>
 
@@ -383,7 +421,8 @@ function Community() {
       {onlineOpen ? (
         <div className="community-online-drawer">
           <h3>
-            <span className="community-dot" /> Online Now ({onlineMembers.length})
+            <span className="community-dot" />{" "}
+            {peopleOnlineLabel(community?.online ?? onlineMembers.length)}
           </h3>
           {onlineMembers.length === 0 ? (
             <p className="community-empty">No classmates are online yet.</p>

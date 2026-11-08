@@ -11,9 +11,15 @@ const {
 const {
   trackJoin,
   trackLeave,
-  onlineCountForLevel,
+  trackAdmin,
+  leaveAdmin,
+  touchSocket,
+  pruneStale,
+  emitCommunityPresence,
   roomName,
 } = require("../utils/communityPresence");
+
+const HEARTBEAT_PRUNE_MS = 15 * 1000;
 
 function socketRequest(socket) {
   const headerAuth = String(socket.handshake.headers.authorization || "");
@@ -84,6 +90,10 @@ async function identifySocket(socket) {
   return null;
 }
 
+function broadcastPresence(io, level) {
+  emitCommunityPresence(io, level);
+}
+
 async function joinSocketToLevel(io, socket, level, identity) {
   for (const room of [...socket.rooms]) {
     if (String(room).startsWith("community:")) {
@@ -95,10 +105,7 @@ async function joinSocketToLevel(io, socket, level, identity) {
   if (identity?.kind === "student") {
     trackJoin(socket.id, identity.student._id.toString(), level);
   }
-  io.to(roomName(level)).emit("community:presence", {
-    level,
-    online: onlineCountForLevel(level),
-  });
+  broadcastPresence(io, level);
   socket.emit("community:joined", { level });
 }
 
@@ -117,12 +124,34 @@ function attachCommunitySocket(io) {
     }
   });
 
+  if (!io._communityPresencePrune) {
+    io._communityPresencePrune = setInterval(() => {
+      const changed = pruneStale(undefined, io);
+      for (const level of changed) broadcastPresence(io, level);
+    }, HEARTBEAT_PRUNE_MS);
+    if (typeof io._communityPresencePrune.unref === "function") {
+      io._communityPresencePrune.unref();
+    }
+  }
+
   io.on("connection", (socket) => {
     const identity = socket.data.identity;
     if (!identity) {
       socket.emit("community:error", { message: "Authentication required." });
       socket.disconnect(true);
       return;
+    }
+
+    if (identity.kind === "admin") {
+      const superAdmin = isSuperAdmin(identity.admin);
+      const assignedLevel = identity.admin.assignedLevel || "";
+      trackAdmin(socket.id, { isSuper: superAdmin, assignedLevel });
+      const levels = superAdmin
+        ? ALLOWED_LEVELS
+        : assignedLevel
+          ? [String(assignedLevel)]
+          : [];
+      for (const level of levels) broadcastPresence(io, level);
     }
 
     socket.on("community:join", async (payload = {}) => {
@@ -154,6 +183,17 @@ function attachCommunitySocket(io) {
       }
     });
 
+    socket.on("community:heartbeat", () => {
+      if (touchSocket(socket.id)) return;
+      if (identity.kind !== "student" || identity.student.communityRestricted) {
+        return;
+      }
+      const level = socket.data.level || studentOwnLevel(identity.student);
+      if (!level) return;
+      trackJoin(socket.id, identity.student._id.toString(), level);
+      broadcastPresence(io, level);
+    });
+
     socket.on("community:typing", (payload = {}) => {
       const level = socket.data.level;
       if (!level || identity.kind !== "student") return;
@@ -167,13 +207,9 @@ function attachCommunitySocket(io) {
     });
 
     socket.on("disconnect", () => {
+      leaveAdmin(socket.id);
       const left = trackLeave(socket.id);
-      if (left?.level) {
-        io.to(roomName(left.level)).emit("community:presence", {
-          level: left.level,
-          online: onlineCountForLevel(left.level),
-        });
-      }
+      if (left?.level) broadcastPresence(io, left.level);
     });
 
     // Students have exactly one room — join it here so a missed client
