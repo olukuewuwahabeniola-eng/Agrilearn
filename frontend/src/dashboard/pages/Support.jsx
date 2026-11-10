@@ -83,7 +83,7 @@ function Support() {
 
       setSuccess(
         data.message ||
-          "Your support request was submitted successfully. Our team will review it."
+          "Your support request has been submitted successfully. Our team will review it and get back to you."
       );
       setValues((current) => ({ ...current, category: "", message: "" }));
     } catch (error) {
@@ -173,9 +173,8 @@ function Support() {
         </div>
 
         <p className="support-config-note">
-          Support messages are always saved for the AgriLearn team. Email
-          delivery to the support inbox uses backend SMTP settings (
-          <code>SUPPORT_EMAIL</code> + Gmail SMTP credentials).
+          Please provide clear details about your issue so our support team can
+          assist you effectively.
         </p>
 
         {formError && (

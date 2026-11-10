@@ -65,10 +65,17 @@ const aiLimiter = createRateLimiter({
   message: "The AI assistant is receiving too many requests. Please wait and try again.",
 });
 
+const contactLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  message: "Too many messages from this network. Please wait and try again.",
+});
+
 module.exports = {
   createRateLimiter,
   authLimiter,
   signupLimiter,
   passwordResetLimiter,
   aiLimiter,
+  contactLimiter,
 };

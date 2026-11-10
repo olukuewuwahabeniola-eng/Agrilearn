@@ -1,9 +1,6 @@
 const SupportMessage = require("../models/SupportMessage");
 const { CATEGORIES } = require("../models/SupportMessage");
-const {
-  isEmailDeliveryConfigured,
-  sendSupportNotification,
-} = require("../utils/mailer");
+const mailer = require("../utils/mailer");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -35,19 +32,13 @@ function validateSupportBody(body) {
   return { errors, data: { name, email, category, message } };
 }
 
-function buildSavedResponse({ saved, emailDelivered, emailDeliveryConfigured, emailError }) {
+function buildSavedResponse({ saved, emailDelivered, emailDeliveryConfigured }) {
   let message =
-    "Your support request was saved successfully. Our team will review it.";
+    "Your support request has been submitted successfully. Our team will review it and get back to you.";
 
-  if (emailDelivered) {
+  if (emailDeliveryConfigured && !emailDelivered) {
     message =
-      "Your support request was saved and emailed to the AgriLearn support inbox.";
-  } else if (emailDeliveryConfigured) {
-    message =
-      "Your support request was saved, but email delivery to the support inbox failed. Our team can still review it in the system.";
-  } else {
-    message =
-      "Your support request was saved successfully. Email delivery is not configured yet, so the support inbox was not notified.";
+      "Your support request was received, but notification is temporarily unavailable. Our team can still review it and will follow up.";
   }
 
   return {
@@ -61,7 +52,6 @@ function buildSavedResponse({ saved, emailDelivered, emailDeliveryConfigured, em
     },
     emailDeliveryConfigured,
     emailDelivered,
-    ...(emailError ? { emailError } : {}),
   };
 }
 
@@ -83,17 +73,15 @@ async function createSupportMessage(req, res) {
       student: req.student._id,
     });
 
-    const emailDeliveryConfigured = isEmailDeliveryConfigured();
+    const emailDeliveryConfigured = mailer.isEmailDeliveryConfigured();
     let emailDelivered = false;
-    let emailError;
 
     if (emailDeliveryConfigured) {
       try {
-        await sendSupportNotification(saved);
+        await mailer.sendSupportNotification(saved);
         emailDelivered = true;
       } catch (deliveryError) {
         emailDelivered = false;
-        emailError = "Email delivery failed after the message was saved.";
         console.error(
           "Support email delivery failed:",
           deliveryError && deliveryError.message
@@ -108,7 +96,6 @@ async function createSupportMessage(req, res) {
         saved,
         emailDelivered,
         emailDeliveryConfigured,
-        emailError,
       })
     );
   } catch (error) {

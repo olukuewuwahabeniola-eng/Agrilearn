@@ -1,5 +1,6 @@
 const { getDbStatus } = require("../config/db");
 const { cloudinaryCredentialStatus } = require("../utils/cloudinary");
+const { emailCredentialStatus } = require("../utils/mailer");
 
 /**
  * Health check controller
@@ -23,6 +24,7 @@ function getHealth(req, res) {
       apiKey: cloudinary.apiKey,
       apiSecret: cloudinary.apiSecret,
     },
+    email: emailCredentialStatus(),
     timestamp: new Date().toISOString(),
   });
 }

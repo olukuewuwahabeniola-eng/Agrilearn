@@ -1,22 +1,9 @@
-import { useRef, useState } from "react";
-import emailjs from "@emailjs/browser";
+import { useState } from "react";
+import { apiFetch } from "../utils/api";
 import "./Contact.css";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-
-const isEmailJsConfigured = Boolean(
-  EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY
-);
-
-/**
- * Field names must match EmailJS template variables:
- * {{name}}, {{email}}, {{title}}, {{message}}
- * (EmailJS Contact Us defaults use "title" for the subject line.)
- */
 const INITIAL_VALUES = {
   name: "",
   email: "",
@@ -51,7 +38,6 @@ function validateContact(values) {
 }
 
 function Contact() {
-  const formRef = useRef(null);
   const [values, setValues] = useState(INITIAL_VALUES);
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState({ type: "", message: "" });
@@ -77,37 +63,34 @@ function Contact() {
       return;
     }
 
-    if (!isEmailJsConfigured) {
-      setStatus({
-        type: "error",
-        message:
-          "We could not send your message right now. Please email agrilearn22@gmail.com and we will get back to you.",
-      });
-      return;
-    }
-
     setSending(true);
     setStatus({ type: "", message: "" });
 
     try {
-      await emailjs.sendForm(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        formRef.current,
-        { publicKey: EMAILJS_PUBLIC_KEY }
-      );
+      const data = await apiFetch("/api/contact", {
+        method: "POST",
+        body: JSON.stringify({
+          name: values.name.trim(),
+          email: values.email.trim(),
+          title: values.title.trim(),
+          message: values.message.trim(),
+        }),
+      });
 
       setValues(INITIAL_VALUES);
       setErrors({});
       setStatus({
         type: "success",
-        message: "Message sent successfully. We will get back to you soon.",
+        message:
+          data.message ||
+          "Message sent successfully. We will get back to you soon.",
       });
     } catch (error) {
-      console.error("EmailJS send failed:", error);
+      if (error.data?.errors) setErrors(error.data.errors);
       setStatus({
         type: "error",
         message:
+          error.message ||
           "Sorry, we could not send your message right now. Please try again in a moment, or email agrilearn22@gmail.com directly.",
       });
     } finally {
@@ -169,12 +152,7 @@ function Contact() {
           </div>
         </div>
 
-        <form
-          ref={formRef}
-          className="contact-form reveal"
-          onSubmit={handleSubmit}
-          noValidate
-        >
+        <form className="contact-form reveal" onSubmit={handleSubmit} noValidate>
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="contact_name">Full name</label>

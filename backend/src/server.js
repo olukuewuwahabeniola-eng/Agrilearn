@@ -12,9 +12,11 @@ const {
   isCloudinaryConfigured,
   logCloudinaryConfigStatus,
 } = require("./utils/cloudinary");
+const { logEmailConfigStatus } = require("./utils/mailer");
 const healthRoutes = require("./routes/healthRoutes");
 const authRoutes = require("./routes/authRoutes");
 const supportRoutes = require("./routes/supportRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const notesRoutes = require("./routes/notesRoutes");
 const pastQuestionRoutes = require("./routes/pastQuestionRoutes");
@@ -100,6 +102,7 @@ app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/contact", contactRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/notes", notesRoutes);
 app.use("/api/past-questions", pastQuestionRoutes);
@@ -140,6 +143,7 @@ async function startServer() {
       "[cloudinary] uploads will fail until CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are set"
     );
   }
+  logEmailConfigStatus("startup");
 
   httpServer.listen(PORT, () => {
     console.log(`AgriLearn backend running on http://localhost:${PORT}`);

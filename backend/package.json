@@ -11,7 +11,7 @@
     "smoke:storage": "node src/scripts/smokeCloudinaryStorage.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
