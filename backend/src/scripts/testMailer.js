@@ -11,6 +11,9 @@ const {
   sendContactMessage,
   sendPasswordResetEmail,
   sendSupportNotification,
+  buildSupportEmail,
+  buildContactEmail,
+  buildPasswordResetEmail,
   resetMailerCache,
   emailCredentialStatus,
 } = require("../utils/mailer");
@@ -141,7 +144,59 @@ async function run() {
   assert.deepStrictEqual(valid.errors, {});
   assert.strictEqual(valid.data.email, "ada@example.com");
 
-  console.log("testMailer: configuration and contact validation passed");
+  const supportMail = buildSupportEmail({
+    _id: "abc123",
+    name: "Ada Student",
+    email: "ada@example.com",
+    category: "Bug Report",
+    message: "The notes page does not open after login.",
+    createdAt: new Date("2026-11-10T10:00:00.000Z"),
+  });
+  assert.strictEqual(
+    supportMail.subject,
+    "New AgriLearn Dashboard Support Request"
+  );
+  assert.ok(supportMail.text.includes("dashboard support request"));
+  assert.ok(!supportMail.text.toLowerCase().includes("homepage"));
+  assert.ok(!supportMail.html.toLowerCase().includes("homepage"));
+
+  const contactMail = buildContactEmail({
+    name: "Ada Student",
+    email: "ada@example.com",
+    title: "Course notes",
+    message: "I cannot open the 200 Level notes PDF.",
+  });
+  assert.ok(contactMail.subject.includes("Homepage Contact"));
+  assert.ok(contactMail.text.includes("homepage contact message"));
+  assert.ok(!contactMail.text.toLowerCase().includes("dashboard support"));
+
+  const studentReset = buildPasswordResetEmail({
+    to: "ada@example.com",
+    name: "Ada",
+    resetUrl: "https://myagrilearn.vercel.app/reset-password?token=example",
+    audience: "student",
+  });
+  assert.ok(studentReset.subject.toLowerCase().includes("reset"));
+  assert.ok(studentReset.text.includes("student"));
+  assert.ok(!studentReset.text.toLowerCase().includes("password is"));
+
+  const superReset = buildPasswordResetEmail({
+    to: "admin@example.com",
+    name: "Admin",
+    resetUrl: "https://myagrilearn.vercel.app/admin/reset-password?token=example",
+    audience: "super_admin",
+  });
+  assert.ok(superReset.subject.includes("Super Admin"));
+
+  const levelReset = buildPasswordResetEmail({
+    to: "level@example.com",
+    name: "Level Admin",
+    resetUrl: "https://myagrilearn.vercel.app/admin/reset-password?token=example",
+    audience: "level_admin",
+  });
+  assert.ok(levelReset.subject.includes("Level Admin"));
+
+  console.log("testMailer: configuration, templates, and contact validation passed");
 }
 
 run().catch((error) => {

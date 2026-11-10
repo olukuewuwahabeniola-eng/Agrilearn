@@ -1,9 +1,12 @@
 const nodemailer = require("nodemailer");
 
 /**
- * Returns true when SMTP + support inbox env vars are all set.
- * Does not invent or log credential values.
+ * Shared AgriLearn email service.
+ * All mail (dashboard support, homepage contact, password reset) uses this
+ * one Nodemailer SMTP transport — the same method that already delivers
+ * Student Dashboard Contact Us messages.
  */
+
 function envFilled(name) {
   return Boolean(process.env[name] && String(process.env[name]).trim());
 }
@@ -26,56 +29,43 @@ function smtpAuthPass() {
   return String(process.env.SMTP_PASS || "").replace(/\s+/g, "");
 }
 
-let cachedTransporter = null;
-
-function createTransporter() {
-  const port = smtpPort();
-  if (!isSmtpConfigured() || !port) {
-    const error = new Error("Email delivery is not configured.");
-    error.code = "EMAIL_NOT_CONFIGURED";
-    throw error;
-  }
-
-  // Port 465 uses implicit TLS; 587 uses STARTTLS.
-  const secure = port === 465;
-
-  return nodemailer.createTransport({
-    host: String(process.env.SMTP_HOST).trim(),
-    port,
-    secure,
-    requireTLS: port === 587,
-    family: 4,
-    auth: {
-      user: String(process.env.SMTP_USER).trim(),
-      pass: smtpAuthPass(),
-    },
-    connectionTimeout: 15000,
-    greetingTimeout: 12000,
-    socketTimeout: 20000,
-    tls: {
-      minVersion: "TLSv1.2",
-    },
-  });
-}
-
-function getTransporter() {
-  if (!cachedTransporter) {
-    cachedTransporter = createTransporter();
-  }
-  return cachedTransporter;
-}
-
-function resetMailerCache() {
-  if (cachedTransporter && typeof cachedTransporter.close === "function") {
-    cachedTransporter.close();
-  }
-  cachedTransporter = null;
-}
-
 function notConfiguredError() {
   const error = new Error("Email delivery is not configured.");
   error.code = "EMAIL_NOT_CONFIGURED";
   return error;
+}
+
+/**
+ * Same SMTP transport used by dashboard Contact Us in production.
+ * Do not add a second provider or a second transporter implementation.
+ */
+function createTransporter() {
+  const port = smtpPort();
+  if (!isSmtpConfigured() || !port) {
+    throw notConfiguredError();
+  }
+
+  const secure = port === 465;
+  const options = {
+    host: String(process.env.SMTP_HOST).trim(),
+    port,
+    secure,
+    auth: {
+      user: String(process.env.SMTP_USER).trim(),
+      pass: smtpAuthPass(),
+    },
+  };
+
+  // Windows (local) often needs IPv4; Render/Linux uses Node's default lookup.
+  if (process.platform === "win32") {
+    options.family = 4;
+  }
+
+  return nodemailer.createTransport(options);
+}
+
+function resetMailerCache() {
+  // Transporters are created per send, matching the working dashboard method.
 }
 
 function escapeHtml(value) {
@@ -87,74 +77,80 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/**
- * Sends a saved support message to SUPPORT_EMAIL via Gmail SMTP.
- * Caller must save to MongoDB first. Throws on transport/send failure.
- */
-async function sendSupportNotification(savedMessage) {
-  if (!isEmailDeliveryConfigured()) {
-    throw notConfiguredError();
+async function sendMail(fields) {
+  const transporter = createTransporter();
+  try {
+    await transporter.sendMail(fields);
+  } finally {
+    if (transporter && typeof transporter.close === "function") {
+      transporter.close();
+    }
   }
-
-  const transporter = getTransporter();
-  const supportInbox = String(process.env.SUPPORT_EMAIL).trim();
-  const fromAddress = String(process.env.SMTP_USER).trim();
-  const studentName = savedMessage.name;
-  const studentEmail = savedMessage.email;
-
-  await transporter.sendMail({
-    from: `"AgriLearn Support" <${fromAddress}>`,
-    to: supportInbox,
-    replyTo: studentEmail,
-    subject: `[AgriLearn Support] ${savedMessage.category} — ${studentName}`,
-    text: [
-      "A new AgriLearn support request was submitted.",
-      "",
-      `Support ID: ${savedMessage._id}`,
-      `Student name: ${studentName}`,
-      `Student email: ${studentEmail}`,
-      `Category: ${savedMessage.category}`,
-      `Submitted: ${savedMessage.createdAt.toISOString()}`,
-      "",
-      "Message:",
-      savedMessage.message,
-    ].join("\n"),
-    html: `
-      <p>A new AgriLearn support request was submitted.</p>
-      <ul>
-        <li><strong>Support ID:</strong> ${savedMessage._id}</li>
-        <li><strong>Student name:</strong> ${escapeHtml(studentName)}</li>
-        <li><strong>Student email:</strong> ${escapeHtml(studentEmail)}</li>
-        <li><strong>Category:</strong> ${escapeHtml(savedMessage.category)}</li>
-        <li><strong>Submitted:</strong> ${savedMessage.createdAt.toISOString()}</li>
-      </ul>
-      <p><strong>Message:</strong></p>
-      <p>${escapeHtml(savedMessage.message).replace(/\n/g, "<br />")}</p>
-    `,
-  });
 }
 
-/**
- * Homepage contact form — same SMTP inbox as dashboard support.
- */
-async function sendContactMessage({ name, email, title, message }) {
-  if (!isEmailDeliveryConfigured()) {
-    throw notConfiguredError();
-  }
+function fromAddress() {
+  return String(process.env.SMTP_USER).trim();
+}
 
-  const transporter = getTransporter();
-  const supportInbox = String(process.env.SUPPORT_EMAIL).trim();
-  const fromAddress = String(process.env.SMTP_USER).trim();
+function supportInbox() {
+  return String(process.env.SUPPORT_EMAIL).trim();
+}
+
+function buildSupportEmail(savedMessage) {
+  const studentName = String(savedMessage.name || "").trim();
+  const studentEmail = String(savedMessage.email || "").trim();
+  const category = String(savedMessage.category || "Other").trim();
+  const submitted = savedMessage.createdAt
+    ? new Date(savedMessage.createdAt).toISOString()
+    : new Date().toISOString();
+  const body = String(savedMessage.message || "");
+  const supportId = savedMessage._id ? String(savedMessage._id) : "";
+
+  return {
+    from: `"AgriLearn Support" <${fromAddress()}>`,
+    to: supportInbox(),
+    replyTo: studentEmail,
+    subject: "New AgriLearn Dashboard Support Request",
+    text: [
+      "A new AgriLearn dashboard support request was submitted.",
+      "",
+      supportId ? `Support ID: ${supportId}` : null,
+      `Student name: ${studentName}`,
+      `Student email: ${studentEmail}`,
+      `Category: ${category}`,
+      `Submitted: ${submitted}`,
+      "",
+      "Message:",
+      body,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    html: `
+      <p>A new AgriLearn dashboard support request was submitted.</p>
+      <ul>
+        ${supportId ? `<li><strong>Support ID:</strong> ${escapeHtml(supportId)}</li>` : ""}
+        <li><strong>Student name:</strong> ${escapeHtml(studentName)}</li>
+        <li><strong>Student email:</strong> ${escapeHtml(studentEmail)}</li>
+        <li><strong>Category:</strong> ${escapeHtml(category)}</li>
+        <li><strong>Submitted:</strong> ${escapeHtml(submitted)}</li>
+      </ul>
+      <p><strong>Message:</strong></p>
+      <p>${escapeHtml(body).replace(/\n/g, "<br />")}</p>
+    `,
+  };
+}
+
+function buildContactEmail({ name, email, title, message }) {
   const safeName = String(name || "").trim();
   const safeEmail = String(email || "").trim();
   const safeTitle = String(title || "").trim();
   const safeMessage = String(message || "").trim();
 
-  await transporter.sendMail({
-    from: `"AgriLearn Contact" <${fromAddress}>`,
-    to: supportInbox,
+  return {
+    from: `"AgriLearn Contact" <${fromAddress()}>`,
+    to: supportInbox(),
     replyTo: safeEmail,
-    subject: `[AgriLearn Contact] ${safeTitle} — ${safeName}`,
+    subject: `New AgriLearn Homepage Contact — ${safeTitle}`,
     text: [
       "A new AgriLearn homepage contact message was submitted.",
       "",
@@ -175,36 +171,43 @@ async function sendContactMessage({ name, email, title, message }) {
       <p><strong>Message:</strong></p>
       <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
     `,
-  });
+  };
 }
 
-/**
- * Sends a password reset link. Never includes the user's password.
- */
-async function sendPasswordResetEmail({ to, name, resetUrl, audience = "student" }) {
-  if (!isSmtpConfigured()) {
-    throw notConfiguredError();
+function resetAudienceCopy(audience) {
+  if (audience === "level_admin") {
+    return {
+      kind: "Level Admin",
+      subject: "Reset your AgriLearn Level Admin password",
+    };
   }
+  if (audience === "super_admin" || audience === "admin") {
+    return {
+      kind: "Super Admin",
+      subject: "Reset your AgriLearn Super Admin password",
+    };
+  }
+  return {
+    kind: "student",
+    subject: "Reset your AgriLearn password",
+  };
+}
 
-  const transporter = getTransporter();
-  const fromAddress = String(process.env.SMTP_USER).trim();
+function buildPasswordResetEmail({ to, name, resetUrl, audience = "student" }) {
   const safeName = String(name || "there").trim() || "there";
-  const kind = audience === "admin" ? "administrator" : "student";
-  const subject =
-    audience === "admin"
-      ? "Reset your AgriLearn admin password"
-      : "Reset your AgriLearn password";
+  const { kind, subject } = resetAudienceCopy(audience);
+  const url = String(resetUrl || "").trim();
 
-  await transporter.sendMail({
-    from: `"AgriLearn" <${fromAddress}>`,
+  return {
+    from: `"AgriLearn" <${fromAddress()}>`,
     to: String(to || "").trim(),
     subject,
     text: [
       `Hi ${safeName},`,
       "",
-      `We received a request to reset your AgriLearn ${kind} account password.`,
+      `We received a request to reset the password for your AgriLearn ${kind} account.`,
       "This link expires in 30 minutes and can be used only once:",
-      resetUrl,
+      url,
       "",
       "If you did not request this, you can ignore this email. Your password will stay the same.",
       "",
@@ -212,15 +215,36 @@ async function sendPasswordResetEmail({ to, name, resetUrl, audience = "student"
     ].join("\n"),
     html: `
       <p>Hi ${escapeHtml(safeName)},</p>
-      <p>We received a request to reset your AgriLearn ${kind} account password.</p>
+      <p>We received a request to reset the password for your AgriLearn ${kind} account.</p>
       <p>This link expires in <strong>30 minutes</strong> and can be used only once:</p>
-      <p><a href="${escapeHtml(resetUrl)}">Reset your password</a></p>
+      <p><a href="${escapeHtml(url)}">Reset your password</a></p>
       <p>If the button does not work, copy this URL into your browser:</p>
-      <p>${escapeHtml(resetUrl)}</p>
+      <p>${escapeHtml(url)}</p>
       <p>If you did not request this, you can ignore this email. Your password will stay the same.</p>
       <p>— AgriLearn</p>
     `,
-  });
+  };
+}
+
+async function sendSupportNotification(savedMessage) {
+  if (!isEmailDeliveryConfigured()) {
+    throw notConfiguredError();
+  }
+  await sendMail(buildSupportEmail(savedMessage));
+}
+
+async function sendContactMessage(payload) {
+  if (!isEmailDeliveryConfigured()) {
+    throw notConfiguredError();
+  }
+  await sendMail(buildContactEmail(payload));
+}
+
+async function sendPasswordResetEmail({ to, name, resetUrl, audience = "student" }) {
+  if (!isSmtpConfigured()) {
+    throw notConfiguredError();
+  }
+  await sendMail(buildPasswordResetEmail({ to, name, resetUrl, audience }));
 }
 
 function logEmailConfigStatus(context = "startup") {
@@ -249,7 +273,14 @@ async function verifySmtp() {
   if (!isSmtpConfigured()) {
     throw notConfiguredError();
   }
-  await getTransporter().verify();
+  const transporter = createTransporter();
+  try {
+    await transporter.verify();
+  } finally {
+    if (transporter && typeof transporter.close === "function") {
+      transporter.close();
+    }
+  }
 }
 
 module.exports = {
@@ -258,6 +289,9 @@ module.exports = {
   sendSupportNotification,
   sendContactMessage,
   sendPasswordResetEmail,
+  buildSupportEmail,
+  buildContactEmail,
+  buildPasswordResetEmail,
   logEmailConfigStatus,
   emailCredentialStatus,
   resetMailerCache,

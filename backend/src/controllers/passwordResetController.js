@@ -203,9 +203,10 @@ async function requestAdminReset(req, res) {
     );
     if (adminEligibleForReset(admin)) {
       try {
+        const role = admin.role === "level_admin" ? "level_admin" : "super_admin";
         await issueReset({
           user: admin,
-          audience: "admin",
+          audience: role,
           buildUrl: buildAdminResetUrl,
         });
       } catch (error) {

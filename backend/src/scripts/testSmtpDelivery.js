@@ -10,6 +10,8 @@ const {
   emailCredentialStatus,
   verifySmtp,
   sendContactMessage,
+  sendSupportNotification,
+  sendPasswordResetEmail,
   resetMailerCache,
 } = require("../utils/mailer");
 
@@ -60,14 +62,51 @@ async function run() {
     return;
   }
 
+  const inbox = String(process.env.SUPPORT_EMAIL).trim();
+  const stamp = new Date().toISOString();
+
   await sendContactMessage({
     name: "AgriLearn SMTP check",
-    email: String(process.env.SUPPORT_EMAIL).trim(),
-    title: "Local SMTP delivery check",
+    email: inbox,
+    title: "Homepage contact delivery check",
     message:
-      "This is an automated AgriLearn configuration check. You can ignore it.",
+      `Automated homepage contact check at ${stamp}. You can ignore it.`,
   });
-  console.log("smtpSend=ok");
+  console.log("smtpSendHomepage=ok");
+
+  await sendSupportNotification({
+    _id: "local-delivery-check",
+    name: "AgriLearn SMTP check",
+    email: inbox,
+    category: "Other",
+    message: `Automated dashboard support check at ${stamp}. You can ignore it.`,
+    createdAt: new Date(),
+  });
+  console.log("smtpSendDashboard=ok");
+
+  await sendPasswordResetEmail({
+    to: inbox,
+    name: "AgriLearn SMTP check",
+    resetUrl: "https://myagrilearn.vercel.app/reset-password?token=local-delivery-check",
+    audience: "student",
+  });
+  console.log("smtpSendStudentReset=ok");
+
+  await sendPasswordResetEmail({
+    to: inbox,
+    name: "AgriLearn SMTP check",
+    resetUrl: "https://myagrilearn.vercel.app/admin/reset-password?token=local-delivery-check",
+    audience: "super_admin",
+  });
+  console.log("smtpSendSuperAdminReset=ok");
+
+  await sendPasswordResetEmail({
+    to: inbox,
+    name: "AgriLearn SMTP check",
+    resetUrl: "https://myagrilearn.vercel.app/admin/reset-password?token=local-delivery-check",
+    audience: "level_admin",
+  });
+  console.log("smtpSendLevelAdminReset=ok");
 }
 
 run().catch((error) => {
